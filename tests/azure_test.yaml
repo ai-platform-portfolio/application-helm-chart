@@ -1,0 +1,131 @@
+suite: Azure identity and storage resources
+templates:
+- templates/*.yaml
+release:
+  name: poc
+values:
+- ../examples/application.yaml
+- ../examples/preview.yaml
+- fixtures/azure.yaml
+set:
+  platform.azure.subscriptionId: example-subscription
+  platform.azure.tenantId: example-tenant
+tests:
+
+- it: renders multiple dedicated identities roles and private containers
+  asserts:
+  - hasDocuments: {count: 2}
+    template: user-assigned-identity.yaml
+  - hasDocuments: {count: 2}
+    template: federated-identity-credential.yaml
+  - hasDocuments: {count: 2}
+    template: role-assignment.yaml
+  - hasDocuments: {count: 2}
+    template: storage-container.yaml
+  - hasDocuments: {count: 2}
+    template: service-account.yaml
+  - equal: {path: metadata.namespace, value: azure-resources}
+    template: user-assigned-identity.yaml
+  - equal: {path: metadata.namespace, value: azure-resources}
+    template: federated-identity-credential.yaml
+  - equal: {path: metadata.namespace, value: azure-resources}
+    template: role-assignment.yaml
+  - equal: {path: metadata.namespace, value: azure-resources}
+    template: storage-container.yaml
+  - equal: {path: spec.owner.armId, value: /subscriptions/example-subscription/resourceGroups/example-identities}
+    template: user-assigned-identity.yaml
+  - notExists: {path: spec.operatorSpec.configMaps.clientId.annotations}
+    template: user-assigned-identity.yaml
+  - notExists: {path: spec.operatorSpec.configMaps.principalId.annotations}
+    template: user-assigned-identity.yaml
+  - matchRegex: {path: spec.operatorSpec.configMaps.clientId.name, pattern: '^preview-pr-42-poc-(backend|frontend)-[a-f0-9]{12}-client-id$'}
+    template: user-assigned-identity.yaml
+  - matchRegex: {path: spec.subject, pattern: '^system:serviceaccount:preview-pr-42:(backend|frontend)$'}
+    template: federated-identity-credential.yaml
+  - matchRegex: {path: spec.owner.name, pattern: '^preview-pr-42-poc-(backend|frontend)-[a-f0-9]{12}$'}
+    template: federated-identity-credential.yaml
+  - matchRegex: {path: spec.azureName, pattern: '^[a-f0-9-]{36}$'}
+    template: role-assignment.yaml
+  - matchRegex: {path: spec.principalIdFromConfig.name, pattern: '^preview-pr-42-poc-backend-[a-f0-9]{12}-principal-id$'}
+    template: role-assignment.yaml
+  - equal: {path: spec.owner.armId, value: /subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.KeyVault/vaults/example-vault}
+    template: role-assignment.yaml
+    documentSelector: {path: spec.roleDefinitionReference.wellKnownName, value: Key Vault Secrets User}
+  - equal: {path: spec.owner.armId, value: /subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.Storage/storageAccounts/examplestorage}
+    template: role-assignment.yaml
+    documentSelector: {path: spec.roleDefinitionReference.wellKnownName, value: Storage Blob Data Reader}
+  - equal: {path: spec.publicAccess, value: None}
+    template: storage-container.yaml
+  - equal: {path: spec.owner.armId, value: /subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.Storage/storageAccounts/examplestorage/blobServices/default}
+    template: storage-container.yaml
+  - equal: {path: spec.template.spec.serviceAccountName, value: frontend}
+    template: deployment.yaml
+  - equal: {path: spec.template.spec.automountServiceAccountToken, value: false}
+    template: deployment.yaml
+  - equal: {path: 'spec.template.metadata.labels["azure.workload.identity/use"]', value: 'true'}
+    template: deployment.yaml
+  - notExists: {path: 'spec.template.spec.containers[0].env'}
+    template: deployment.yaml
+  - notExists: {path: 'spec.template.spec.volumes[*].projected'}
+    template: deployment.yaml
+  - equal: {path: spec.template.spec.serviceAccountName, value: backend}
+    template: rollout.yaml
+  - equal: {path: spec.template.spec.automountServiceAccountToken, value: false}
+    template: rollout.yaml
+  - equal: {path: 'spec.template.metadata.labels["azure.workload.identity/use"]', value: 'true'}
+    template: rollout.yaml
+  - notExists: {path: 'spec.template.spec.containers[0].env'}
+    template: rollout.yaml
+  - notExists: {path: 'spec.template.spec.volumes[*].projected'}
+    template: rollout.yaml
+  - equal: {path: 'metadata.annotations["azure.workload.identity/tenant-id"]', value: example-tenant}
+    template: service-account.yaml
+  - matchRegex: {path: 'metadata.annotations["azure.workload.identity/client-id"]', pattern: '^00000000-0000-0000-0000-00000000000[12]$'}
+    template: service-account.yaml
+  - notExists: {path: 'spec.template.spec.containers[1].azureIdentity'}
+    template: rollout.yaml
+  - notExists: {path: 'spec.template.spec.containers[1].env'}
+    template: rollout.yaml
+  - notExists: {path: 'spec.template.spec.initContainers[0].volumeMounts'}
+    template: rollout.yaml
+
+- it: omits default Azure sync waves
+  asserts:
+  - notExists: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]'}
+    template: user-assigned-identity.yaml
+  - notExists: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]'}
+    template: federated-identity-credential.yaml
+  - notExists: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]'}
+    template: role-assignment.yaml
+  - notExists: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]'}
+    template: storage-container.yaml
+  - notExists: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]'}
+    template: service-account.yaml
+
+- it: applies configured Azure sync waves
+  set:
+    platform.syncWaves:
+      userAssignedIdentity: 0
+      federatedIdentityCredential: 1
+      roleAssignment: 10
+      storageContainer: 5
+      serviceAccount: 2
+  asserts:
+  - equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '0'}
+    template: user-assigned-identity.yaml
+  - equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '1'}
+    template: federated-identity-credential.yaml
+  - equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '10'}
+    template: role-assignment.yaml
+  - equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '5'}
+    template: storage-container.yaml
+  - equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '2'}
+    template: service-account.yaml
+
+- it: accepts a configured role name
+  set:
+    platform.azure.roleAssignments.backend-blobs.roleName: Storage Blob Data Contributor
+  asserts:
+  - equal: {path: spec.roleDefinitionReference.wellKnownName, value: Storage Blob Data Contributor}
+    template: role-assignment.yaml
+    documentSelector: {path: spec.roleDefinitionReference.wellKnownName, value: Storage Blob Data Contributor}

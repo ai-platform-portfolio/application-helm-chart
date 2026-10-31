@@ -1,0 +1,50 @@
+suite: Shared preview identity
+templates:
+- templates/*.yaml
+release:
+  name: poc
+values:
+- ../examples/application.yaml
+- ../examples/preview.yaml
+- fixtures/containers.yaml
+set:
+  platform.azure.identities:
+    shared:
+      azureName: id-shared-preview
+      create: false
+      clientId: 00000000-0000-0000-0000-000000000003
+  platform.azure.identityResourceGroup: rg-preview
+  platform.azure.subscriptionId: example-subscription
+  platform.azure.tenantId: example-tenant
+  platform.azure.oidcIssuerUrl: https://issuer.example.invalid/
+  components.backend.identity: shared
+tests:
+
+- it: references a shared identity without owning its identity or roles
+  asserts:
+  - hasDocuments: {count: 0}
+    template: user-assigned-identity.yaml
+  - hasDocuments: {count: 0}
+    template: role-assignment.yaml
+  - hasDocuments: {count: 1}
+    template: federated-identity-credential.yaml
+  - equal: {path: spec.subject, value: 'system:serviceaccount:preview-pr-42:shared'}
+    template: federated-identity-credential.yaml
+  - equal: {path: spec.owner.armId, value: /subscriptions/example-subscription/resourceGroups/rg-preview/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-shared-preview}
+    template: federated-identity-credential.yaml
+  - equal: {path: 'metadata.annotations["azure.workload.identity/client-id"]', value: 00000000-0000-0000-0000-000000000003}
+    template: service-account.yaml
+  - equal: {path: 'spec.template.metadata.annotations["azure.workload.identity/skip-containers"]', value: configure;metrics}
+    template: rollout.yaml
+
+- it: rejects duplicate ownership of shared identity roles
+  set:
+    platform.azure.roleAssignments:
+      reader:
+        identity: shared
+        roleName: Reader
+        scope: storageAccount
+  asserts:
+  - failedTemplate:
+      errorPattern: assign its roles once in platform GitOps
+    template: role-assignment.yaml

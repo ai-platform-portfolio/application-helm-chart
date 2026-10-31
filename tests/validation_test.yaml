@@ -1,0 +1,50 @@
+suite: Invalid application inputs
+templates:
+- templates/*.yaml
+release:
+  name: poc
+values:
+- ../examples/application.yaml
+- ../examples/preview.yaml
+- fixtures/containers.yaml
+tests:
+
+- it: rejects undefined identity
+  set:
+    components.frontend.identity: missing
+  asserts:
+  - failedTemplate:
+      errorPattern: references undefined identity missing
+    template: deployment.yaml
+
+- it: rejects missing namespace
+  set:
+    namespace: ''
+  asserts:
+  - failedTemplate:
+      errorPattern: namespace is required
+    template: service.yaml
+
+- it: rejects mutable image
+  set:
+    components.frontend.image: frontend:latest
+  asserts:
+  - failedTemplate:
+      errorPattern: frontend.*image|image.*frontend
+    template: deployment.yaml
+
+- it: rejects wildcard hostname
+  set:
+    hosts.public.hostname: '*.preview.example.com'
+  asserts:
+  - failedTemplate:
+      errorPattern: hosts.*public.*hostname
+    template: listener-set.yaml
+
+- it: rejects mutable sidecar image
+  set:
+    components.frontend.sidecars.telemetry.image: telemetry:latest
+  asserts:
+  - failedTemplate:
+      errorPattern: telemetry.*image|image.*telemetry
+    template: deployment.yaml

@@ -18,5 +18,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
+        with:
+          version: v3.22.1
+
+      - name: Install Helm unit test plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v1.2.1
+
+      - name: Lint environment examples
+        run: |
+          for environment in preview staging production; do
+            helm lint . -f examples/application.yaml -f "examples/${environment}.yaml"
+          done
+
       - name: Test chart rendering
-        run: ruby tests/render_test.rb
+        run: helm unittest --strict .
