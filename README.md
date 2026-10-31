@@ -180,6 +180,47 @@ those integration checks belong to the later deployment validation work.
 
 ## Optional PostgreSQL and Atlas resources
 
+### Why deploy through the Atlas operator?
+
+This platform uses Argo CD for application delivery. The Atlas operator exposes
+database deployment status as Kubernetes conditions, so Argo can wait for the
+required schema before starting application workloads. It also provides native
+resource interfaces for versioned/declarative deployments, scheduled drift
+checks and security scans, with the appropriate Atlas configuration and licence.
+These features still need configuration and acceptance tests; installing the
+operator alone does not enable them.
+
+The alternative considered was the official Atlas Terraform provider through
+Atlantis. It supports schema/migration deployments, reviews and protected down
+migrations, and remains a valid choice for a Terraform-oriented platform. For
+this portfolio, it would add Terraform state for schemas and require explicit
+coordination between Atlantis completion and Argo application delivery. Its
+resource deletion behavior also differs: `atlas_schema` invokes schema cleaning,
+while `atlas_migration` deletion performs no database cleanup. This decision is
+about the fit with the existing delivery system, not a claim that the provider
+is immature or incapable.
+
+The tradeoff is that the operator needs cluster access, credential RBAC, health
+checks and lifecycle configuration. CI still plans/lints/tests changes; CNPG
+still handles database provisioning and backup/recovery. Deleting an Atlas CR
+does not delete its SQL objects, so preview cleanup remains explicit.
+
+The intended self-service interface is native Atlas HCL in application source,
+reusable policies/definitions alongside the existing Terraform module library,
+CI publishing reviewed revisions, and a small Helm reference selecting the
+revision to deploy. Sharing a library repository does not require Terraform to
+execute Atlas. This authoring layout is an agreed direction, not implemented
+behavior: the current role template still generates HCL from values and needs
+revision before that interface is complete. No schema or role should be
+reconciled by both Terraform and the operator.
+
+Sources: [Atlas operator](https://atlasgo.io/integrations/kubernetes),
+[Terraform provider](https://atlasgo.io/integrations/terraform),
+[schema resource lifecycle](https://github.com/ariga/terraform-provider-atlas/blob/v0.10.3/internal/provider/atlas_schema_resource.go),
+[migration resource lifecycle](https://github.com/ariga/terraform-provider-atlas/blob/v0.10.3/internal/provider/atlas_migration_resource.go).
+
+### Current chart inputs
+
 The `postgres` maps describe databases, roles and migration deployments. They
 are empty by default. CNPG `Database` resources live in `platform.postgres.namespace`;
 Atlas resources and credential-read RBAC live in `platform.atlas.namespace`.
