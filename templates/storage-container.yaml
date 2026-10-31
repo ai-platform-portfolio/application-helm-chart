@@ -3,7 +3,7 @@
 apiVersion: storage.azure.com/v20230101
 kind: StorageAccountsBlobServicesContainer
 metadata:
-  name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}
+  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
   {{- if hasKey $.Values.platform.syncWaves "storageContainer" }}
   annotations:

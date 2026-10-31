@@ -4,7 +4,7 @@
 apiVersion: managedidentity.azure.com/v1api20230131
 kind: UserAssignedIdentity
 metadata:
-  name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}
+  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
   {{- if hasKey $.Values.platform.syncWaves "userAssignedIdentity" }}
   annotations:
@@ -18,10 +18,10 @@ spec:
   operatorSpec:
     configMaps:
       clientId:
-        name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}-client-id
+        name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}-client-id
         key: clientId
       principalId:
-        name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}-principal-id
+        name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}-principal-id
         key: principalId
 ---
 {{- end }}
@@ -32,7 +32,7 @@ spec:
 apiVersion: managedidentity.azure.com/v1api20230131
 kind: FederatedIdentityCredential
 metadata:
-  name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}
+  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
   {{- if hasKey $.Values.platform.syncWaves "federatedIdentityCredential" }}
   annotations:
@@ -43,7 +43,7 @@ spec:
   owner:
     armId: {{ printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ManagedIdentity/userAssignedIdentities/%s" (required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId) (required "identity.resourceGroup or platform.azure.identityResourceGroup is required" (default $.Values.platform.azure.identityResourceGroup $identity.resourceGroup)) $identity.azureName | quote }}
   {{- else }}
-  owner: {name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}}
+  owner: {name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}}
   {{- end }}
   audiences: [{{ $.Values.platform.azure.federationAudience | quote }}]
   issuer: {{ required "platform.azure.oidcIssuerUrl is required" $.Values.platform.azure.oidcIssuerUrl | quote }}
@@ -62,7 +62,7 @@ spec:
 apiVersion: authorization.azure.com/v1api20220401
 kind: RoleAssignment
 metadata:
-  name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}
+  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
   {{- if hasKey $.Values.platform.syncWaves "roleAssignment" }}
   annotations:
@@ -71,7 +71,7 @@ metadata:
 spec:
   azureName: {{ printf "%s-%s-%s-%s-%s" (substr 0 8 $hash) (substr 8 12 $hash) (substr 12 16 $hash) (substr 16 20 $hash) (substr 20 32 $hash) | quote }}
   owner: {armId: {{ $scope | quote }}}
-  principalIdFromConfig: {name: {{ include "application.azureResourceName" (dict "root" $ "name" $assignment.identity) }}-principal-id, key: principalId}
+  principalIdFromConfig: {name: {{ include "application.resourceName" (dict "root" $ "name" $assignment.identity) }}-principal-id, key: principalId}
   principalType: ServicePrincipal
   roleDefinitionReference:
     wellKnownName: {{ $assignment.roleName | quote }}

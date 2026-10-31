@@ -1,0 +1,97 @@
+suite: PostgreSQL databases
+
+templates:
+  - templates/postgres.yaml
+
+release:
+  name: poc
+
+tests:
+  - it: renders no databases by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: creates multiple databases on the existing cluster with explicit owners
+    values:
+      - fixtures/postgres.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+
+      - equal:
+          path: metadata.namespace
+          value: postgres
+
+      - equal:
+          path: spec.cluster.name
+          value: platform
+
+      - equal:
+          path: spec.owner
+          value: preview_pr42_owner
+
+      - equal:
+          path: spec.databaseReclaimPolicy
+          value: delete
+        documentSelector:
+          path: spec.name
+          value: preview_pr42
+
+      - equal:
+          path: spec.databaseReclaimPolicy
+          value: retain
+        documentSelector:
+          path: spec.name
+          value: preview_pr42_reports
+
+      - notExists:
+          path: metadata.annotations
+
+  - it: applies the platform namespace cluster and sync wave
+    values:
+      - fixtures/postgres.yaml
+    set:
+      platform.postgres.namespace: database-system
+      platform.postgres.cluster: shared
+      platform.syncWaves.database: -10
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: database-system
+
+      - equal:
+          path: spec.cluster.name
+          value: shared
+
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-10'
+
+  - it: rejects a missing owner
+    set:
+      namespace: example
+      postgres.databases.api:
+        name: example
+    asserts:
+      - failedTemplate:
+          errorPattern: owner
+
+  - it: rejects invalid SQL identifiers
+    set:
+      namespace: example
+      postgres.databases.api:
+        name: 'invalid; DROP DATABASE postgres'
+        owner: example_owner
+    asserts:
+      - failedTemplate:
+          errorPattern: name
+
+  - it: rejects two chart entries claiming the same database
+    values:
+      - fixtures/postgres.yaml
+    set:
+      postgres.databases.reporting.name: preview_pr42
+    asserts:
+      - failedTemplate:
+          errorPattern: declared more than once

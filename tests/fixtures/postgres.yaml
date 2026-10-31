@@ -1,0 +1,42 @@
+namespace: preview-pr-42
+
+postgres:
+  databases:
+    api:
+      name: preview_pr42
+      owner: preview_pr42_owner
+      reclaimPolicy: delete
+
+    reporting:
+      name: preview_pr42_reports
+      owner: preview_pr42_owner
+
+  roles:
+    preview_pr42_owner: {}
+
+    preview_pr42_migrator:
+      login: true
+      passwordSecret: preview-pr42-migrator
+      memberOf: [preview_pr42_owner]
+
+    preview_pr42_app:
+      login: true
+      passwordSecret: preview-pr42-runtime
+
+  migrations:
+    api:
+      database: api
+      role: preview_pr42_migrator
+      repository: preview-poc
+      tag: commit-123
+
+    reporting:
+      database: reporting
+      role: preview_pr42_migrator
+      repository: reporting-poc
+      tag: commit-456
+
+platform:
+  atlas:
+    roleScope: [preview_pr42_owner, preview_pr42_migrator, preview_pr42_app]
+    rolePlanRepository: preview-roles
