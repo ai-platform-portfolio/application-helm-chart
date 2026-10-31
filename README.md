@@ -51,8 +51,8 @@ components:
 
 The platform supplies the namespace and hosts in an environment values file.
 The chart's `values.yaml` holds repeatable Gateway, resource, pod security,
-probe, Service and Rollout defaults. `_helpers.tpl` contains only the shared
-label function; `_pod.tpl` assembles the pod from those defaults. The optional
+probe, Service and Rollout defaults. `_helpers.tpl` contains shared rendering
+functions; `_pod.tpl` assembles the pod from those defaults. The optional
 `platform.gateway.httpRedirect.enabled` defaults to `true` and adds one HTTP
 redirect route per host. Set it to `false` only when the platform supplies the
 redirect elsewhere. Redirects attach to the Gateway's HTTP listener; application
