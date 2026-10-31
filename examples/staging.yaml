@@ -1,6 +1,5 @@
+# Platform environment overlay.
 namespace: poc-staging
-hostname: poc.staging.example.com
-
-namespaces:
-  app:
-    name: poc-staging
+hosts:
+  public:
+    hostname: poc.staging.example.com

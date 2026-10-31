@@ -16,9 +16,9 @@ class ChartRenderTest < Minitest::Test
     output
   end
 
-  def render(*files)
+  def render(*files, extra: [])
     args = files.flat_map { |file| ['-f', file] }
-    YAML.load_stream(helm('template', 'poc', '.', *args)).compact
+    YAML.load_stream(helm('template', 'poc', '.', *args, *extra)).compact
   end
 
   def find(docs, kind, name)
@@ -29,7 +29,7 @@ class ChartRenderTest < Minitest::Test
     assert_empty render
   end
 
-  def test_example_environments
+  def test_small_application_values_render_each_environment
     ENVIRONMENTS.each do |environment, (namespace, hostname)|
       helm('lint', '.', '-f', 'examples/application.yaml', '-f', "examples/#{environment}.yaml")
       docs = render('examples/application.yaml', "examples/#{environment}.yaml")
@@ -49,46 +49,63 @@ class ChartRenderTest < Minitest::Test
       assert_equal %w[backend-stable backend-canary], refs.map { |ref| ref['name'] }
       assert_equal [100, 0], refs.map { |ref| ref['weight'] }
 
+      frontend_route = find(docs, 'HTTPRoute', 'frontend')
+      assert_equal '/', frontend_route['spec']['rules'].first['matches'].first['path']['value']
+      assert_equal 'frontend', frontend_route['spec']['rules'].first['backendRefs'].first['name']
+
+      frontend = find(docs, 'Deployment', 'frontend')
+      assert_match(/@sha256:[0-9a-f]{64}\z/, frontend['spec']['template']['spec']['containers'].first['image'])
+      assert_equal true, frontend['spec']['template']['spec']['containers'].first['securityContext']['readOnlyRootFilesystem']
+      selector = find(docs, 'Service', 'frontend')['spec']['selector']
+      assert selector.all? { |key, value| frontend['spec']['template']['metadata']['labels'][key] == value }
+
       rollout = find(docs, 'Rollout', 'backend')
       assert_equal 'backend', rollout['spec']['strategy']['canary']['trafficRouting']['plugins']['argoproj-labs/gatewayAPI']['httpRoute']
       assert_equal 'backend-stable', rollout['spec']['strategy']['canary']['stableService']
     end
   end
 
-  def test_resource_maps_support_additional_instances_and_overrides
+  def test_multiple_components_and_hosts_use_the_same_templates
     docs = render('examples/application.yaml', 'examples/preview.yaml', 'tests/fixtures/extra.yaml')
     counts = docs.group_by { |doc| doc['kind'] }.transform_values(&:length)
 
-    assert_equal({ 'Namespace' => 2, 'Deployment' => 2, 'Service' => 4,
-                   'Rollout' => 2, 'ListenerSet' => 2, 'HTTPRoute' => 4 }, counts)
+    assert_equal({ 'Namespace' => 1, 'Deployment' => 2, 'Service' => 6,
+                   'Rollout' => 2, 'ListenerSet' => 2, 'HTTPRoute' => 5 }, counts)
 
     worker = find(docs, 'Deployment', 'worker')
-    assert_equal 'auxiliary', worker['metadata']['namespace']
-    assert_equal 'worker-team', worker['metadata']['annotations']['example.test/owner']
     assert_equal 2, worker['spec']['replicas']
+    assert_equal '250m', worker['spec']['template']['spec']['containers'].first['resources']['requests']['cpu']
+    assert_equal '128Mi', worker['spec']['template']['spec']['containers'].first['resources']['requests']['memory']
 
-    steps = find(docs, 'Rollout', 'processor')['spec']['strategy']['canary']['steps']
-    assert_equal [{ 'setWeight' => 50 }, { 'pause' => {} }], steps
-
-    route = find(docs, 'HTTPRoute', 'worker')
-    assert_equal ['worker.example.com'], route['spec']['hostnames']
-    assert_equal 'auxiliary', route['metadata']['namespace']
+    route = find(docs, 'HTTPRoute', 'processor')
+    assert_equal ['internal.preview.example.com'], route['spec']['hostnames']
+    assert_equal 'internal', route['spec']['parentRefs'].first['name']
+    assert_nil find(docs, 'HTTPRoute', 'worker')
   end
 
   def test_another_application_can_render_without_poc_values
-    docs = render('tests/fixtures/extra.yaml')
+    docs = render('tests/fixtures/extra.yaml', extra: ['--set', 'namespace=another-app'])
     counts = docs.group_by { |doc| doc['kind'] }.transform_values(&:length)
 
-    assert_equal({ 'Namespace' => 1, 'Deployment' => 1, 'Service' => 1,
-                   'Rollout' => 1, 'ListenerSet' => 1, 'HTTPRoute' => 1 }, counts)
-    assert_equal 'auxiliary', find(docs, 'Service', 'worker')['metadata']['namespace']
-    refute find(docs, 'Service', 'frontend')
+    assert_equal({ 'Namespace' => 1, 'Deployment' => 1, 'Service' => 3,
+                   'Rollout' => 1, 'ListenerSet' => 1, 'HTTPRoute' => 2 }, counts)
+    assert_nil find(docs, 'Deployment', 'frontend')
+    assert_equal 'another-app', find(docs, 'Service', 'processor-stable')['metadata']['namespace']
   end
 
-  def test_namespaced_resource_requires_namespace
+  def test_missing_namespace_and_mutable_image_are_rejected
     _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
-                                            '-f', 'examples/application.yaml', chdir: ROOT)
+                                            '-f', 'examples/application.yaml',
+                                            '-f', 'examples/preview.yaml',
+                                            '--set', 'namespace=', chdir: ROOT)
     refute status.success?
     assert_includes error, 'namespace is required'
+
+    _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
+                                            '-f', 'examples/application.yaml',
+                                            '-f', 'examples/preview.yaml',
+                                            '--set', 'components.frontend.image=frontend:latest', chdir: ROOT)
+    refute status.success?
+    assert_includes error, 'components.frontend.image'
   end
 end

@@ -1,9 +1,21 @@
-{{- range $name, $resource := .Values.deployments }}
+{{- range $name, $component := .Values.components }}
+{{- if eq (default "deployment" $component.delivery) "deployment" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  {{- include "application.metadata" (dict "root" $ "name" $name "resource" $resource "namespaced" true) | nindent 2 }}
+  name: {{ $name }}
+  namespace: {{ required "namespace is required" $.Values.namespace | quote }}
+  labels:
+    {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
 spec:
-  {{- toYaml (required (printf "deployments.%s.spec is required" $name) $resource.spec) | nindent 2 }}
+  replicas: {{ default $.Values.platform.replicas $component.replicas }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name | quote }}
+      app.kubernetes.io/component: {{ $name | quote }}
+  template:
+    {{- include "application.podTemplate" (dict "root" $ "name" $name "component" $component) | nindent 4 }}
 ---
+{{- end }}
 {{- end }}

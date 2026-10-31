@@ -1,35 +1,42 @@
-# Application resource chart
+# Application chart
 
-This chart renders reusable Kubernetes resource types. An application supplies
-maps of resources in its values file; each map can contain any number of entries.
-The chart has no built-in frontend, backend, service names or rollout strategy.
+This chart lets an application describe its workloads without writing Kubernetes
+manifests. Each entry in `components` creates a Deployment or Argo Rollout and
+its Services. A component with a `route` also gets an HTTPRoute. Each entry in
+`hosts` creates an HTTPS ListenerSet, certificate request and HTTP redirect.
+The chart creates the application Namespace. Maps support any number of
+components and hosts.
 
-| Values map | Kubernetes kind |
-| --- | --- |
-| `namespaces` | Namespace |
-| `deployments` | Deployment |
-| `services` | Service |
-| `rollouts` | Argo Rollout |
-| `listenerSets` | Gateway API ListenerSet |
-| `httpRoutes` | Gateway API HTTPRoute |
+Application developers normally supply only:
 
-The map key is the resource name unless an entry sets `name`. Each namespaced
-entry may set `namespace`; otherwise the chart uses the top-level `namespace`.
-Entries may set `labels` and `annotations`. Their `spec` is the native Kubernetes
-specification for that kind, so application-specific settings remain in the
-application's values rather than becoming chart switches. The chart adds only
-release labels to resource metadata. The top-level `hostname` fills an omitted
-HTTPRoute `spec.hostnames` or ListenerSet listener `hostname`; an explicit value
-on a resource takes precedence.
+```yaml
+components:
+  frontend:
+    image: registry.example/frontend@sha256:...
+    port: 8080
+    healthPath: /
+    route: {host: public, path: /}
 
-The ListenerSet and HTTPRoute templates share the same values convention, but
-they remain separate maps. An application can create multiple listeners and
-routes or use either kind independently.
+  backend:
+    delivery: rollout
+    image: registry.example/backend@sha256:...
+    port: 8000
+    healthPath: /api/healthz
+    route: {host: public, path: /api}
+```
 
-## Example
+The map key becomes the workload and Service name. `delivery` defaults to
+`deployment`; use `rollout` for progressive delivery. Omit `route` for an
+internal component. A component may override `replicas` and `resources` when it
+needs more capacity. Images must use immutable digests.
 
-`examples/application.yaml` defines the small frontend/API proof of concept.
-Environment overlays supply its namespace and hostname:
+The platform supplies the namespace and hosts in an environment values file.
+The chart's `values.yaml` holds repeatable Gateway, resource and Rollout defaults;
+templates set selectors, probes, pod security, stable/canary Services, route
+weights and TLS attachment. The example Rollout promotes immediately. A later
+delivery change will add measured steps and blocking tests.
+
+## Render the example
 
 ```sh
 helm template poc . -f examples/application.yaml -f examples/preview.yaml
@@ -37,12 +44,9 @@ helm template poc . -f examples/application.yaml -f examples/staging.yaml
 helm template poc . -f examples/application.yaml -f examples/production.yaml
 ```
 
-The example images and domains are placeholders. Use published image digests and
-real hostnames for deployments. The example's Rollout uses the platform's
-Gateway API plugin; its immediate promotion step leaves measured canary checks
-for a later delivery change. Platform operators and the shared Gateway stay in
-GitOps. Database and Atlas templates are separate follow-up work.
+The example image digests and domains are placeholders. Platform operators and
+the shared Gateway are installed through GitOps. ASO database and Atlas
+migration templates are separate follow-up work.
 
-Run `ruby tests/render_test.rb` to lint and render all environments, verify the
-frontend/API wiring, and prove multiple instances of every resource type render
-without fixed names. The same test runs on pull requests.
+Run `ruby tests/render_test.rb` for the automated render checks. The same test
+runs on pull requests.

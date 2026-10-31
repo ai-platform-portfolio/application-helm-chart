@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "namespace": { "type": "string" },
+    "hosts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["hostname"],
+        "properties": {
+          "hostname": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["image", "port", "healthPath"],
+        "properties": {
+          "delivery": { "enum": ["deployment", "rollout"] },
+          "image": {
+            "type": "string",
+            "pattern": "^.+@sha256:[a-f0-9]{64}$"
+          },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "healthPath": { "type": "string", "pattern": "^/" },
+          "replicas": { "type": "integer", "minimum": 1 },
+          "resources": { "type": "object" },
+          "route": {
+            "type": "object",
+            "required": ["host", "path"],
+            "properties": {
+              "host": { "type": "string", "minLength": 1 },
+              "path": { "type": "string", "pattern": "^/" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

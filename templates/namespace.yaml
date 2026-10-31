@@ -1,7 +1,9 @@
-{{- range $name, $resource := .Values.namespaces }}
+{{- if or .Values.components .Values.hosts }}
 apiVersion: v1
 kind: Namespace
 metadata:
-  {{- include "application.metadata" (dict "root" $ "name" $name "resource" $resource "namespaced" false) | nindent 2 }}
----
+  name: {{ required "namespace is required" .Values.namespace | quote }}
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    gitops.platform/gateway: public
 {{- end }}
