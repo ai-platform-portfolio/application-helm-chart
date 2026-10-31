@@ -137,6 +137,6 @@ class ChartRenderTest < Minitest::Test
                                             '-f', 'examples/preview.yaml',
                                             '--set', 'hosts.public.hostname=*.preview.example.com', chdir: ROOT)
     refute status.success?
-    assert_includes error, 'hosts.public.hostname'
+    assert_match(%r{(?:hosts\.public\.hostname|/hosts/public/hostname)}, error)
   end
 end
