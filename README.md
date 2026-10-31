@@ -2,8 +2,8 @@
 
 This chart lets an application describe its workloads without writing Kubernetes
 manifests. Each entry in `components` creates a Deployment or Argo Rollout and
-its Services. A component with a `route` also gets an HTTPRoute. Each entry in
-`hosts` creates an HTTPS ListenerSet, certificate request and HTTP redirect.
+its Services. A component with a `route` also gets an HTTPS HTTPRoute. Each entry in
+`hosts` creates an HTTPS ListenerSet and certificate request.
 The chart creates the application Namespace. Maps support any number of
 components and hosts.
 
@@ -31,9 +31,13 @@ internal component. A component may override `replicas` and `resources` when it
 needs more capacity. Images must use immutable digests.
 
 The platform supplies the namespace and hosts in an environment values file.
-The chart's `values.yaml` holds repeatable Gateway, resource and Rollout defaults;
-templates set selectors, probes, pod security, stable/canary Services, route
-weights and TLS attachment. The example Rollout promotes immediately. A later
+The chart's `values.yaml` holds repeatable Gateway, resource, pod security,
+probe, Service and Rollout defaults. `_helpers.tpl` contains only the shared
+label function; `_pod.tpl` assembles the pod from those defaults. The optional
+`platform.gateway.httpRedirect.enabled` setting adds one redirect route per
+host when the platform needs it. Application routes remain separate per
+component so Rollouts can manage the backend route's weights. The example
+Rollout promotes immediately. A later
 delivery change will add measured steps and blocking tests.
 
 ## Render the example

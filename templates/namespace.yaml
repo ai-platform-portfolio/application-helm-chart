@@ -4,6 +4,5 @@ kind: Namespace
 metadata:
   name: {{ required "namespace is required" .Values.namespace | quote }}
   labels:
-    pod-security.kubernetes.io/enforce: restricted
-    gitops.platform/gateway: public
+    {{- toYaml .Values.platform.namespaceLabels | nindent 4 }}
 {{- end }}

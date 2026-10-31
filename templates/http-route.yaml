@@ -13,20 +13,20 @@ spec:
     - group: gateway.networking.k8s.io
       kind: ListenerSet
       name: {{ $component.route.host }}
-      sectionName: https
+      sectionName: {{ $.Values.platform.gateway.listener.name }}
   rules:
     - matches:
         - path:
-            type: PathPrefix
+            type: {{ $.Values.platform.gateway.pathMatchType }}
             value: {{ $component.route.path | quote }}
       backendRefs:
         {{- if eq $component.delivery "rollout" }}
         - name: {{ $name }}-stable
           port: {{ $component.port }}
-          weight: 100
+          weight: {{ $.Values.platform.rollout.initialStableWeight }}
         - name: {{ $name }}-canary
           port: {{ $component.port }}
-          weight: 0
+          weight: {{ $.Values.platform.rollout.initialCanaryWeight }}
         {{- else }}
         - name: {{ $name }}
           port: {{ $component.port }}
@@ -35,6 +35,7 @@ spec:
 {{- end }}
 {{- end }}
 
+{{- if .Values.platform.gateway.httpRedirect.enabled }}
 {{- range $name, $host := .Values.hosts }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -47,12 +48,13 @@ spec:
   parentRefs:
     - name: {{ $.Values.platform.gateway.name }}
       namespace: {{ $.Values.platform.gateway.namespace }}
-      sectionName: http
+      sectionName: {{ $.Values.platform.gateway.httpRedirect.listenerName }}
   rules:
     - filters:
         - type: RequestRedirect
           requestRedirect:
-            scheme: https
-            statusCode: 301
+            scheme: {{ $.Values.platform.gateway.httpRedirect.scheme }}
+            statusCode: {{ $.Values.platform.gateway.httpRedirect.statusCode }}
 ---
+{{- end }}
 {{- end }}

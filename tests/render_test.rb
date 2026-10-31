@@ -34,7 +34,7 @@ class ChartRenderTest < Minitest::Test
       helm('lint', '.', '-f', 'examples/application.yaml', '-f', "examples/#{environment}.yaml")
       docs = render('examples/application.yaml', "examples/#{environment}.yaml")
 
-      assert_equal 10, docs.length
+      assert_equal 9, docs.length
       assert_equal namespace, find(docs, 'Namespace', namespace)['metadata']['name']
       assert docs.reject { |doc| doc['kind'] == 'Namespace' }
                  .all? { |doc| doc['metadata']['namespace'] == namespace }
@@ -52,6 +52,7 @@ class ChartRenderTest < Minitest::Test
       frontend_route = find(docs, 'HTTPRoute', 'frontend')
       assert_equal '/', frontend_route['spec']['rules'].first['matches'].first['path']['value']
       assert_equal 'frontend', frontend_route['spec']['rules'].first['backendRefs'].first['name']
+      assert_nil find(docs, 'HTTPRoute', 'public-redirect')
 
       frontend = find(docs, 'Deployment', 'frontend')
       assert_match(/@sha256:[0-9a-f]{64}\z/, frontend['spec']['template']['spec']['containers'].first['image'])
@@ -70,7 +71,7 @@ class ChartRenderTest < Minitest::Test
     counts = docs.group_by { |doc| doc['kind'] }.transform_values(&:length)
 
     assert_equal({ 'Namespace' => 1, 'Deployment' => 2, 'Service' => 6,
-                   'Rollout' => 2, 'ListenerSet' => 2, 'HTTPRoute' => 5 }, counts)
+                   'Rollout' => 2, 'ListenerSet' => 2, 'HTTPRoute' => 3 }, counts)
 
     worker = find(docs, 'Deployment', 'worker')
     assert_equal 2, worker['spec']['replicas']
@@ -88,9 +89,24 @@ class ChartRenderTest < Minitest::Test
     counts = docs.group_by { |doc| doc['kind'] }.transform_values(&:length)
 
     assert_equal({ 'Namespace' => 1, 'Deployment' => 1, 'Service' => 3,
-                   'Rollout' => 1, 'ListenerSet' => 1, 'HTTPRoute' => 2 }, counts)
+                   'Rollout' => 1, 'ListenerSet' => 1, 'HTTPRoute' => 1 }, counts)
     assert_nil find(docs, 'Deployment', 'frontend')
     assert_equal 'another-app', find(docs, 'Service', 'processor-stable')['metadata']['namespace']
+  end
+
+  def test_platform_defaults_and_optional_redirect_are_values_driven
+    docs = render('examples/application.yaml', 'examples/preview.yaml',
+                  'tests/fixtures/extra.yaml',
+                  extra: ['--set', 'platform.gateway.httpRedirect.enabled=true',
+                          '--set', 'platform.pod.imagePullPolicy=Always'])
+
+    assert_equal 5, docs.count { |doc| doc['kind'] == 'HTTPRoute' }
+    assert_equal 'Always', find(docs, 'Deployment', 'frontend')['spec']['template']['spec']['containers'].first['imagePullPolicy']
+
+    %w[public internal].each do |host|
+      redirect = find(docs, 'HTTPRoute', "#{host}-redirect")
+      assert_equal 301, redirect['spec']['rules'].first['filters'].first['requestRedirect']['statusCode']
+    end
   end
 
   def test_missing_namespace_and_mutable_image_are_rejected

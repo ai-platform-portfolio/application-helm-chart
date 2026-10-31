@@ -9,7 +9,7 @@ metadata:
     {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
 spec:
   replicas: {{ default $.Values.platform.replicas $component.replicas }}
-  revisionHistoryLimit: 2
+  revisionHistoryLimit: {{ $.Values.platform.revisionHistoryLimit }}
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ $.Release.Name | quote }}
