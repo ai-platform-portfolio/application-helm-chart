@@ -7,16 +7,24 @@
 {{- if and $identity (not (hasKey .root.Values.platform.azure.identities $identity)) -}}
 {{- fail (printf "component %s references undefined identity %s" .name $identity) -}}
 {{- end -}}
-{{- $clientIdConfigMap := "" -}}
+{{- $skip := list -}}
 {{- if $identity -}}
-{{- $identityConfig := index .root.Values.platform.azure.identities $identity -}}
-{{- $clientIdConfigMap = printf "%s-client-id" (include "application.azureResourceName" (dict "root" .root "name" $identity)) -}}
-{{- if eq $identityConfig.create false -}}
-{{- $clientIdConfigMap = required (printf "identity %s needs clientIdConfigMap when create=false" $identity) $identityConfig.clientIdConfigMap -}}
+{{- $_ := required (printf "identity %s needs clientId before deploying workloads" $identity) (index .root.Values.platform.azure.identities $identity).clientId -}}
+{{- range $name, $container := merge (deepCopy (default dict .component.sidecars)) (default dict .component.initContainers) -}}
+{{- if not $container.azureIdentity -}}
+{{- $skip = append $skip $name -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 metadata:
+  {{- if and $identity $skip }}
+  annotations:
+    azure.workload.identity/skip-containers: {{ join ";" $skip | quote }}
+  {{- end }}
   labels:
+    {{- if $identity }}
+    azure.workload.identity/use: "true"
+    {{- end }}
     {{- include "application.labels" . | nindent 4 }}
 spec:
   {{- if $identity }}
@@ -40,18 +48,6 @@ spec:
     - name: {{ .name }}
       image: {{ .component.image | quote }}
       imagePullPolicy: {{ .root.Values.platform.pod.imagePullPolicy }}
-      {{- if $identity }}
-      env:
-        - name: AZURE_CLIENT_ID
-          valueFrom:
-            configMapKeyRef:
-              name: {{ $clientIdConfigMap }}
-              key: clientId
-        - name: AZURE_TENANT_ID
-          value: {{ required "platform.azure.tenantId is required" .root.Values.platform.azure.tenantId | quote }}
-        - name: AZURE_FEDERATED_TOKEN_FILE
-          value: {{ printf "%s/%s" .root.Values.platform.azure.workloadIdentity.mountPath .root.Values.platform.azure.workloadIdentity.fileName | quote }}
-      {{- end }}
       ports:
         - name: {{ .root.Values.platform.httpPortName }}
           containerPort: {{ .component.port }}
@@ -70,11 +66,6 @@ spec:
 
       volumeMounts:
         {{- toYaml .root.Values.platform.pod.volumeMounts | nindent 8 }}
-        {{- if $identity }}
-        - name: azure-identity-token
-          mountPath: {{ .root.Values.platform.azure.workloadIdentity.mountPath | quote }}
-          readOnly: true
-        {{- end }}
 
     {{- range $name, $config := .component.sidecars }}
     {{- if eq $name $.name }}
@@ -85,13 +76,4 @@ spec:
 
   volumes:
     {{- toYaml .root.Values.platform.pod.volumes | nindent 4 }}
-    {{- if $identity }}
-    - name: azure-identity-token
-      projected:
-        sources:
-          - serviceAccountToken:
-              audience: {{ .root.Values.platform.azure.workloadIdentity.audience | quote }}
-              expirationSeconds: {{ .root.Values.platform.azure.workloadIdentity.expirationSeconds }}
-              path: {{ .root.Values.platform.azure.workloadIdentity.fileName | quote }}
-    {{- end }}
 {{- end -}}

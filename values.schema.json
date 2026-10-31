@@ -46,7 +46,7 @@
                   "azureName": { "type": "string", "minLength": 1 },
                   "create": { "type": "boolean" },
                   "resourceGroup": { "type": "string", "minLength": 1 },
-                  "clientIdConfigMap": { "type": "string", "minLength": 1 },
+                  "clientId": { "type": "string", "minLength": 1 },
                   "keyVaultSecretsUser": { "type": "boolean" },
                   "storageBlobDataReader": { "type": "boolean" }
                 }

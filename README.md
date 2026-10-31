@@ -92,20 +92,31 @@ Terraform-owned identity or container needs a separate ownership transfer.
 
 An identity creates a new user-assigned managed identity by default, plus one
 federated credential for its application ServiceAccount. Set a component's
-`identity` to the identity map key to project an Azure token and pass the
-client ID to its main container. Sidecars and init containers opt in with
-`azureIdentity: true`. ASO writes the public client ID to a ConfigMap in
-`azure-resources`; Reflector copies only that ConfigMap to the exact application
-namespace. The principal ID stays in `azure-resources` for role assignments.
+`identity` to the identity map key. The ServiceAccount carries
+`azure.workload.identity/client-id` and tenant annotations, and the pod carries
+`azure.workload.identity/use: "true"`. The AKS Workload Identity webhook injects
+the Azure environment variables and token volume. Sidecars and init containers
+opt in with `azureIdentity: true`; the chart adds other container names to the
+webhook's skip-containers annotation.
 
-For previews, set `create: false`, `azureName`, `resourceGroup` and
-`clientIdConfigMap` to reference a shared identity owned by platform GitOps.
-The chart then creates only the preview-specific federated credential and
-ServiceAccount. The platform must separately mirror the shared public client
-ID ConfigMap into the preview namespace and grant that identity its Azure roles
-once. The shared identity itself is not provisioned by this chart. Azure limits
-the number of federated credentials on one identity, so preview concurrency
-needs a bounded policy before enabling this path.
+The platform supplies `identities.<name>.clientId` after provisioning. A first
+render can create identities, federation, roles and containers without workloads
+or a client ID; no ServiceAccount is emitted until its client ID is supplied.
+ASO exports client and principal IDs to separate central ConfigMaps. After ASO
+reports Ready, platform delivery reads the client ID and supplies it as a Helm
+input before enabling workloads. A workload referencing an identity without a
+client ID fails rendering. Sync waves alone cannot pass runtime values into a
+Helm render. This chart does not automate that delivery handoff; it must be
+implemented when wiring the GitOps application deployment. No Helm lookup or
+post-deployment annotation patch is used.
+
+For previews, set `create: false`, `azureName`, `resourceGroup` and `clientId`
+to reference a shared identity owned by platform GitOps. The chart creates its
+preview-specific federated credential and annotated ServiceAccount; platform
+GitOps grants the shared identity its Azure roles once. The shared identity
+itself is not provisioned by this chart. Azure limits the number of federated
+credentials on one identity, so preview concurrency needs a bounded policy
+before enabling this path. Keep real client IDs in platform deployment inputs.
 
 `keyVaultSecretsUser` and `storageBlobDataReader` are optional role assignments
 for newly created identities. Their scopes are the whole existing vault and

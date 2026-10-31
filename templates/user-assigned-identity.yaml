@@ -19,11 +19,6 @@ spec:
       clientId:
         name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}-client-id
         key: clientId
-        annotations:
-          reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
-          reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: {{ printf "^%s$" $.Values.namespace | quote }}
-          reflector.v1.k8s.emberstack.com/reflection-auto-enabled: "true"
-          reflector.v1.k8s.emberstack.com/reflection-auto-namespaces: {{ printf "^%s$" $.Values.namespace | quote }}
       principalId:
         name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}-principal-id
         key: principalId
