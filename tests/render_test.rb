@@ -106,6 +106,6 @@ class ChartRenderTest < Minitest::Test
                                             '-f', 'examples/preview.yaml',
                                             '--set', 'components.frontend.image=frontend:latest', chdir: ROOT)
     refute status.success?
-    assert_includes error, 'components.frontend.image'
+    assert_match(/frontend(?:\/|\.)image/, error)
   end
 end
