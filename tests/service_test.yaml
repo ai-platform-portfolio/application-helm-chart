@@ -1,0 +1,121 @@
+suite: Service
+
+templates:
+  - templates/service.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: renders preview Service resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 3
+
+      - equal:
+          path: metadata.namespace
+          value: preview-pr-42
+
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/instance: poc
+            app.kubernetes.io/component: frontend
+        documentSelector:
+          path: metadata.name
+          value: frontend
+
+  - it: renders staging Service resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/staging.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 3
+
+      - equal:
+          path: metadata.namespace
+          value: poc-staging
+
+  - it: renders production Service resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/production.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 3
+
+      - equal:
+          path: metadata.namespace
+          value: poc-production
+
+  - it: scales component and host maps with merged resource defaults
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 6
+
+  - it: renders another application without the example components
+    values:
+      - fixtures/extra.yaml
+    set:
+      namespace: another-app
+
+    asserts:
+      - hasDocuments:
+          count: 3
+
+      - equal:
+          path: metadata.namespace
+          value: another-app
+
+  - it: omits sync waves unless configured
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+
+  - it: applies sync waves to every resource of each kind
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.syncWaves:
+        service: -10
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-10'
+
+  - it: renders nothing with empty values
+
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: rejects missing namespace
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+    set:
+      namespace: ''
+
+    asserts:
+      - failedTemplate:
+          errorPattern: namespace is required

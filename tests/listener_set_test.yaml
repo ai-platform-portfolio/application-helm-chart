@@ -1,0 +1,122 @@
+suite: ListenerSet
+
+templates:
+  - templates/listener-set.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: renders preview ListenerSet resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: preview-pr-42
+
+      - equal:
+          path: spec.listeners[0].hostname
+          value: pr-42.preview.example.com
+
+      - equal:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+          value: letsencrypt-azuredns
+
+  - it: renders staging ListenerSet resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/staging.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: poc-staging
+
+      - equal:
+          path: spec.listeners[0].hostname
+          value: poc.staging.example.com
+
+      - equal:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+          value: letsencrypt-azuredns
+
+  - it: renders production ListenerSet resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/production.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: poc-production
+
+      - equal:
+          path: spec.listeners[0].hostname
+          value: poc.example.com
+
+      - equal:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+          value: letsencrypt-azuredns
+
+  - it: scales component and host maps with merged resource defaults
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: omits sync waves unless configured
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+
+  - it: applies sync waves to every resource of each kind
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.syncWaves:
+        listenerSet: -5
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-5'
+
+  - it: renders nothing with empty values
+
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: rejects wildcard hostname
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+    set:
+      hosts.public.hostname: '*.preview.example.com'
+
+    asserts:
+      - failedTemplate:
+          errorPattern: hosts.*public.*hostname

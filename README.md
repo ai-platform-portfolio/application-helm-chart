@@ -168,7 +168,9 @@ for environment in preview staging production; do
 done
 ```
 
-The YAML suites under `tests/` check rendered resources and invalid inputs without
-a cluster. This keeps assertions in the Helm ecosystem without a separate language
+Each YAML suite under `tests/` targets one Kubernetes resource template, with
+shared inputs in `tests/fixtures/`. Keep assertions expanded and test cases
+separated by blank lines. The suites check rendered resources and invalid inputs
+without a cluster. This keeps assertions in the Helm ecosystem without a separate language
 or test runner. Native `helm test` exercises an installed release through test pods;
 those integration checks belong to the later deployment validation work.

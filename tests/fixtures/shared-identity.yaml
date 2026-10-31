@@ -1,0 +1,14 @@
+platform:
+  azure:
+    identities:
+      shared:
+        azureName: id-shared-preview
+        create: false
+        clientId: 00000000-0000-0000-0000-000000000003
+    identityResourceGroup: rg-preview
+    subscriptionId: example-subscription
+    tenantId: example-tenant
+    oidcIssuerUrl: https://issuer.example.invalid/
+components:
+  backend:
+    identity: shared

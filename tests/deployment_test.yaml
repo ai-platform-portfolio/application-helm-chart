@@ -1,0 +1,239 @@
+suite: Deployment
+
+templates:
+  - templates/deployment.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: renders preview Deployment resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: preview-pr-42
+
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: frontend
+
+  - it: renders staging Deployment resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/staging.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: poc-staging
+
+  - it: renders production Deployment resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/production.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: poc-production
+
+  - it: scales component and host maps with merged resource defaults
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 2
+
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentSelector:
+          path: metadata.name
+          value: worker
+
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests
+          value:
+            cpu: 250m
+            memory: 128Mi
+        documentSelector:
+          path: metadata.name
+          value: worker
+
+  - it: renders another application without the example components
+    values:
+      - fixtures/extra.yaml
+    set:
+      namespace: another-app
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: can override image pull policy
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+    set:
+      platform.gateway.httpRedirect.enabled: false
+      platform.pod.imagePullPolicy: Always
+
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+
+  - it: renders sidecars and init containers with platform defaults
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 2
+
+      - lengthEqual:
+          path: spec.template.spec.initContainers
+          count: 1
+
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.readOnlyRootFilesystem
+          value: true
+
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: telemetry
+
+      - equal:
+          path: spec.template.spec.containers[1].ports[0].containerPort
+          value: 9090
+
+      - equal:
+          path: spec.template.spec.containers[1].resources.requests
+          value:
+            cpu: 25m
+            memory: 128Mi
+
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: prepare
+
+  - it: omits sync waves unless configured
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+
+  - it: applies sync waves to every resource of each kind
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.syncWaves:
+        deployment: 0
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '0'
+
+  - it: renders multiple Deployment resources with the expected Azure configuration
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: frontend
+
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+      - equal:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+          value: 'true'
+
+      - notExists:
+          path: spec.template.spec.containers[0].env
+
+      - notExists:
+          path: spec.template.spec.volumes[*].projected
+
+  - it: renders nothing with empty values
+
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: rejects undefined identity
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+    set:
+      components.frontend.identity: missing
+
+    asserts:
+      - failedTemplate:
+          errorPattern: references undefined identity missing
+
+  - it: rejects mutable image
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+    set:
+      components.frontend.image: frontend:latest
+
+    asserts:
+      - failedTemplate:
+          errorPattern: frontend.*image|image.*frontend
+
+  - it: rejects mutable sidecar image
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+    set:
+      components.frontend.sidecars.telemetry.image: telemetry:latest
+
+    asserts:
+      - failedTemplate:
+          errorPattern: telemetry.*image|image.*telemetry
