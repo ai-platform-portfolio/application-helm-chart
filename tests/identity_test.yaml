@@ -1,0 +1,386 @@
+suite: Azure identity and permissions
+
+templates:
+  - templates/identity.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: 'UserAssignedIdentity: renders multiple UserAssignedIdentity resources with the expected Azure
+      configuration'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - hasDocuments:
+          count: 2
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: azure-resources
+
+      - equal:
+          path: spec.owner.armId
+          value: /subscriptions/example-subscription/resourceGroups/example-identities
+
+      - notExists:
+          path: spec.operatorSpec.configMaps.clientId.annotations
+
+      - notExists:
+          path: spec.operatorSpec.configMaps.principalId.annotations
+
+      - matchRegex:
+          path: spec.operatorSpec.configMaps.clientId.name
+          pattern: ^preview-pr-42-poc-(backend|frontend)-[a-f0-9]{12}-client-id$
+    documentSelector:
+      path: kind
+      value: UserAssignedIdentity
+      matchMany: true
+
+  - it: 'UserAssignedIdentity: omits default Azure sync waves'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+    documentSelector:
+      path: kind
+      value: UserAssignedIdentity
+      matchMany: true
+
+  - it: 'UserAssignedIdentity: applies configured Azure sync waves'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+      platform.syncWaves:
+        userAssignedIdentity: 0
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '0'
+    documentSelector:
+      path: kind
+      value: UserAssignedIdentity
+      matchMany: true
+
+  - it: 'UserAssignedIdentity: renders nothing with empty values'
+
+    asserts:
+      - containsDocument:
+          kind: UserAssignedIdentity
+          apiVersion: managedidentity.azure.com/v1api20230131
+        not: true
+
+  - it: 'UserAssignedIdentity: provisions identities without an annotated account until client ID exists'
+    set:
+      namespace: identity-stage
+      platform.azure.identities:
+        backend:
+          azureName: id-example-backend
+      platform.azure.location: example-region
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.identityResourceGroup: example-platform
+      platform.azure.oidcIssuerUrl: https://issuer.example.invalid/
+
+    asserts:
+      - hasDocuments:
+          count: 1
+          filterAware: true
+    documentSelector:
+      path: kind
+      value: UserAssignedIdentity
+      matchMany: true
+
+  - it: 'UserAssignedIdentity: references a shared identity without owning its identity or roles'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+      - fixtures/shared-identity.yaml
+
+    asserts:
+      - containsDocument:
+          kind: UserAssignedIdentity
+          apiVersion: managedidentity.azure.com/v1api20230131
+        not: true
+
+  - it: 'FederatedIdentityCredential: renders multiple FederatedIdentityCredential resources with the
+      expected Azure configuration'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - hasDocuments:
+          count: 2
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: azure-resources
+
+      - matchRegex:
+          path: spec.subject
+          pattern: ^system:serviceaccount:preview-pr-42:(backend|frontend)$
+
+      - matchRegex:
+          path: spec.owner.name
+          pattern: ^preview-pr-42-poc-(backend|frontend)-[a-f0-9]{12}$
+    documentSelector:
+      path: kind
+      value: FederatedIdentityCredential
+      matchMany: true
+
+  - it: 'FederatedIdentityCredential: omits default Azure sync waves'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+    documentSelector:
+      path: kind
+      value: FederatedIdentityCredential
+      matchMany: true
+
+  - it: 'FederatedIdentityCredential: applies configured Azure sync waves'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+      platform.syncWaves:
+        federatedIdentityCredential: 1
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '1'
+    documentSelector:
+      path: kind
+      value: FederatedIdentityCredential
+      matchMany: true
+
+  - it: 'FederatedIdentityCredential: renders nothing with empty values'
+
+    asserts:
+      - containsDocument:
+          kind: FederatedIdentityCredential
+          apiVersion: managedidentity.azure.com/v1api20230131
+        not: true
+
+  - it: 'FederatedIdentityCredential: provisions identities without an annotated account until client
+      ID exists'
+    set:
+      namespace: identity-stage
+      platform.azure.identities:
+        backend:
+          azureName: id-example-backend
+      platform.azure.location: example-region
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.identityResourceGroup: example-platform
+      platform.azure.oidcIssuerUrl: https://issuer.example.invalid/
+
+    asserts:
+      - hasDocuments:
+          count: 1
+          filterAware: true
+    documentSelector:
+      path: kind
+      value: FederatedIdentityCredential
+      matchMany: true
+
+  - it: 'FederatedIdentityCredential: references a shared identity without owning its identity or roles'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+      - fixtures/shared-identity.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+          filterAware: true
+
+      - equal:
+          path: spec.subject
+          value: system:serviceaccount:preview-pr-42:shared
+
+      - equal:
+          path: spec.owner.armId
+          value: /subscriptions/example-subscription/resourceGroups/rg-preview/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-shared-preview
+    documentSelector:
+      path: kind
+      value: FederatedIdentityCredential
+      matchMany: true
+
+  - it: 'RoleAssignment: renders multiple RoleAssignment resources with the expected Azure configuration'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - hasDocuments:
+          count: 2
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: azure-resources
+
+      - matchRegex:
+          path: spec.azureName
+          pattern: ^[a-f0-9-]{36}$
+
+      - matchRegex:
+          path: spec.principalIdFromConfig.name
+          pattern: ^preview-pr-42-poc-backend-[a-f0-9]{12}-principal-id$
+
+      - equal:
+          path: spec.owner.armId
+          value: /subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.KeyVault/vaults/example-vault
+        documentSelector:
+          path: spec.roleDefinitionReference.wellKnownName
+          value: Key Vault Secrets User
+
+      - equal:
+          path: spec.owner.armId
+          value: /subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.Storage/storageAccounts/examplestorage
+        documentSelector:
+          path: spec.roleDefinitionReference.wellKnownName
+          value: Storage Blob Data Reader
+    documentSelector:
+      path: kind
+      value: RoleAssignment
+      matchMany: true
+
+  - it: 'RoleAssignment: omits default Azure sync waves'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+    documentSelector:
+      path: kind
+      value: RoleAssignment
+      matchMany: true
+
+  - it: 'RoleAssignment: applies configured Azure sync waves'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+      platform.syncWaves:
+        roleAssignment: 10
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '10'
+    documentSelector:
+      path: kind
+      value: RoleAssignment
+      matchMany: true
+
+  - it: 'RoleAssignment: accepts a configured role name'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+      platform.azure.roleAssignments.backend-blobs.roleName: Storage Blob Data Contributor
+
+    asserts:
+      - equal:
+          path: spec.roleDefinitionReference.wellKnownName
+          value: Storage Blob Data Contributor
+        documentSelector:
+          path: spec.roleDefinitionReference.wellKnownName
+          value: Storage Blob Data Contributor
+    documentSelector:
+      path: kind
+      value: RoleAssignment
+      matchMany: true
+
+  - it: 'RoleAssignment: renders nothing with empty values'
+
+    asserts:
+      - containsDocument:
+          kind: RoleAssignment
+          apiVersion: authorization.azure.com/v1api20220401
+        not: true
+
+  - it: 'RoleAssignment: references a shared identity without owning its identity or roles'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+      - fixtures/shared-identity.yaml
+
+    asserts:
+      - containsDocument:
+          kind: RoleAssignment
+          apiVersion: authorization.azure.com/v1api20220401
+        not: true
+
+  - it: 'RoleAssignment: rejects duplicate ownership of shared identity roles'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+      - fixtures/shared-identity.yaml
+    set:
+      platform.azure.roleAssignments:
+        reader:
+          identity: shared
+          roleName: Reader
+          scope: storageAccount
+
+    asserts:
+      - failedTemplate:
+          errorPattern: assign its roles once in platform GitOps

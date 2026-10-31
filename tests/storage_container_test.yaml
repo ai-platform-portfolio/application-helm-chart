@@ -1,0 +1,69 @@
+suite: StorageAccountsBlobServicesContainer
+
+templates:
+  - templates/storage-container.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: renders multiple StorageAccountsBlobServicesContainer resources with the expected Azure configuration
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - hasDocuments:
+          count: 2
+
+      - equal:
+          path: metadata.namespace
+          value: azure-resources
+
+      - equal:
+          path: spec.publicAccess
+          value: None
+
+      - equal:
+          path: spec.owner.armId
+          value: /subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.Storage/storageAccounts/examplestorage/blobServices/default
+
+  - it: omits default Azure sync waves
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+
+  - it: applies configured Azure sync waves
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+      platform.syncWaves:
+        storageContainer: 5
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '5'
+
+  - it: renders nothing with empty values
+
+    asserts:
+      - hasDocuments:
+          count: 0

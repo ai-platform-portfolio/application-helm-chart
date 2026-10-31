@@ -1,0 +1,194 @@
+suite: Rollout
+
+templates:
+  - templates/rollout.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: renders preview Rollout resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: preview-pr-42
+
+      - equal:
+          path: spec.strategy.canary.stableService
+          value: backend-stable
+
+      - equal:
+          path: spec.strategy.canary.trafficRouting.plugins["argoproj-labs/gatewayAPI"].httpRoute
+          value: backend
+
+  - it: renders staging Rollout resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/staging.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: poc-staging
+
+  - it: renders production Rollout resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/production.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.namespace
+          value: poc-production
+
+  - it: scales component and host maps with merged resource defaults
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: renders another application without the example components
+    values:
+      - fixtures/extra.yaml
+    set:
+      namespace: another-app
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: renders sidecars and init containers with platform defaults
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 2
+
+      - lengthEqual:
+          path: spec.template.spec.initContainers
+          count: 1
+
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.readOnlyRootFilesystem
+          value: true
+
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+  - it: omits sync waves unless configured
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+
+  - it: applies sync waves to every resource of each kind
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.syncWaves:
+        rollout: 1
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '1'
+
+  - it: renders multiple Rollout resources with the expected Azure configuration
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/azure.yaml
+    set:
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.tenantId: example-tenant
+
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: backend
+
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+      - equal:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+          value: 'true'
+
+      - notExists:
+          path: spec.template.spec.containers[0].env
+
+      - notExists:
+          path: spec.template.spec.volumes[*].projected
+
+      - notExists:
+          path: spec.template.spec.containers[1].azureIdentity
+
+      - notExists:
+          path: spec.template.spec.containers[1].env
+
+      - notExists:
+          path: spec.template.spec.initContainers[0].volumeMounts
+
+  - it: renders nothing with empty values
+
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: rejects workloads before client ID delivery
+    values:
+      - ../examples/application.yaml
+    set:
+      namespace: identity-stage
+      platform.azure.identities:
+        backend:
+          azureName: id-example-backend
+      platform.azure.location: example-region
+      platform.azure.subscriptionId: example-subscription
+      platform.azure.identityResourceGroup: example-platform
+      platform.azure.oidcIssuerUrl: https://issuer.example.invalid/
+      components.backend.identity: backend
+
+    asserts:
+      - failedTemplate:
+          errorPattern: needs clientId before deploying workloads
+
+  - it: references a shared identity without owning its identity or roles
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+      - fixtures/shared-identity.yaml
+
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["azure.workload.identity/skip-containers"]
+          value: configure;metrics

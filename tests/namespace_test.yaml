@@ -1,0 +1,76 @@
+suite: Namespace
+
+templates:
+  - templates/namespace.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: renders preview Namespace resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.name
+          value: preview-pr-42
+
+  - it: renders staging Namespace resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/staging.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.name
+          value: poc-staging
+
+  - it: renders production Namespace resources
+    values:
+      - ../examples/application.yaml
+      - ../examples/production.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.name
+          value: poc-production
+
+  - it: omits sync waves unless configured
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+
+  - it: applies sync waves to every resource of each kind
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.syncWaves:
+        namespace: -20
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-20'
+
+  - it: renders nothing with empty values
+
+    asserts:
+      - hasDocuments:
+          count: 0

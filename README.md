@@ -154,5 +154,26 @@ The example image digests and domains are placeholders. Platform operators and
 the shared Gateway are installed through GitOps. ASO database and Atlas
 migration templates are separate follow-up work.
 
-Run `ruby tests/render_test.rb` for the automated render checks. The same test
-runs on pull requests.
+## Test the chart
+
+Use Helm 3.22.1 and the pinned [helm-unittest](https://github.com/helm-unittest/helm-unittest)
+plugin for the same checks as CI:
+
+```sh
+helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v1.2.1
+helm unittest --strict .
+
+for environment in preview staging production; do
+  helm lint . -f examples/application.yaml -f "examples/${environment}.yaml"
+done
+```
+
+Each YAML suite under `tests/` targets a resource or a related resource group,
+with shared inputs in `tests/fixtures/`. `identity.yaml` groups managed identities,
+federated credentials and their role assignments; `gateway-routes.yaml` groups
+ListenerSets and HTTPRoutes. Their suites select each resource kind explicitly.
+Keep assertions expanded and test cases
+separated by blank lines. The suites check rendered resources and invalid inputs
+without a cluster. This keeps assertions in the Helm ecosystem without a separate language
+or test runner. Native `helm test` exercises an installed release through test pods;
+those integration checks belong to the later deployment validation work.

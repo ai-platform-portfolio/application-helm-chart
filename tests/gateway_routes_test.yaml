@@ -1,0 +1,381 @@
+suite: Gateway listeners and routes
+
+templates:
+  - templates/gateway-routes.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: 'ListenerSet: renders preview ListenerSet resources'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: preview-pr-42
+
+      - equal:
+          path: spec.listeners[0].hostname
+          value: pr-42.preview.example.com
+
+      - equal:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+          value: letsencrypt-azuredns
+    documentSelector:
+      path: kind
+      value: ListenerSet
+      matchMany: true
+
+  - it: 'ListenerSet: renders staging ListenerSet resources'
+    values:
+      - ../examples/application.yaml
+      - ../examples/staging.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: poc-staging
+
+      - equal:
+          path: spec.listeners[0].hostname
+          value: poc.staging.example.com
+
+      - equal:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+          value: letsencrypt-azuredns
+    documentSelector:
+      path: kind
+      value: ListenerSet
+      matchMany: true
+
+  - it: 'ListenerSet: renders production ListenerSet resources'
+    values:
+      - ../examples/application.yaml
+      - ../examples/production.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 1
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: poc-production
+
+      - equal:
+          path: spec.listeners[0].hostname
+          value: poc.example.com
+
+      - equal:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+          value: letsencrypt-azuredns
+    documentSelector:
+      path: kind
+      value: ListenerSet
+      matchMany: true
+
+  - it: 'ListenerSet: scales component and host maps with merged resource defaults'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 2
+          filterAware: true
+    documentSelector:
+      path: kind
+      value: ListenerSet
+      matchMany: true
+
+  - it: 'ListenerSet: omits sync waves unless configured'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+    documentSelector:
+      path: kind
+      value: ListenerSet
+      matchMany: true
+
+  - it: 'ListenerSet: applies sync waves to every resource of each kind'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.syncWaves:
+        listenerSet: -5
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-5'
+    documentSelector:
+      path: kind
+      value: ListenerSet
+      matchMany: true
+
+  - it: 'ListenerSet: renders nothing with empty values'
+
+    asserts:
+      - containsDocument:
+          kind: ListenerSet
+          apiVersion: gateway.networking.k8s.io/v1
+        not: true
+
+  - it: 'ListenerSet: rejects wildcard hostname'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/containers.yaml
+    set:
+      hosts.public.hostname: '*.preview.example.com'
+
+    asserts:
+      - failedTemplate:
+          errorPattern: hosts.*public.*hostname
+
+  - it: 'HTTPRoute: renders preview HTTPRoute resources'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 3
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: preview-pr-42
+
+      - equal:
+          path: spec.rules[0].backendRefs
+          value:
+            - name: backend-stable
+              port: 8000
+              weight: 100
+            - name: backend-canary
+              port: 8000
+              weight: 0
+        documentSelector:
+          path: metadata.name
+          value: backend
+
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /
+        documentSelector:
+          path: metadata.name
+          value: frontend
+
+      - equal:
+          path: spec.rules[0].backendRefs[0].name
+          value: frontend
+        documentSelector:
+          path: metadata.name
+          value: frontend
+
+      - equal:
+          path: spec.hostnames
+          value:
+            - pr-42.preview.example.com
+
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: http
+        documentSelector:
+          path: metadata.name
+          value: public-redirect
+
+      - equal:
+          path: spec.rules[0].filters[0].requestRedirect
+          value:
+            scheme: https
+            statusCode: 301
+        documentSelector:
+          path: metadata.name
+          value: public-redirect
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: renders staging HTTPRoute resources'
+    values:
+      - ../examples/application.yaml
+      - ../examples/staging.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 3
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: poc-staging
+
+      - equal:
+          path: spec.rules[0].backendRefs
+          value:
+            - name: backend-stable
+              port: 8000
+              weight: 100
+            - name: backend-canary
+              port: 8000
+              weight: 0
+        documentSelector:
+          path: metadata.name
+          value: backend
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: renders production HTTPRoute resources'
+    values:
+      - ../examples/application.yaml
+      - ../examples/production.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 3
+          filterAware: true
+
+      - equal:
+          path: metadata.namespace
+          value: poc-production
+
+      - equal:
+          path: spec.rules[0].backendRefs
+          value:
+            - name: backend-stable
+              port: 8000
+              weight: 100
+            - name: backend-canary
+              port: 8000
+              weight: 0
+        documentSelector:
+          path: metadata.name
+          value: backend
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: scales component and host maps with merged resource defaults'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+
+    asserts:
+      - hasDocuments:
+          count: 5
+          filterAware: true
+
+      - equal:
+          path: spec.hostnames
+          value:
+            - internal.preview.example.com
+        documentSelector:
+          path: metadata.name
+          value: processor
+
+      - equal:
+          path: spec.parentRefs[0].name
+          value: internal
+        documentSelector:
+          path: metadata.name
+          value: processor
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: renders another application without the example components'
+    values:
+      - fixtures/extra.yaml
+    set:
+      namespace: another-app
+
+    asserts:
+      - hasDocuments:
+          count: 2
+          filterAware: true
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: can disable redirects'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+    set:
+      platform.gateway.httpRedirect.enabled: false
+      platform.pod.imagePullPolicy: Always
+
+    asserts:
+      - hasDocuments:
+          count: 3
+          filterAware: true
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: omits sync waves unless configured'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: applies sync waves to every resource of each kind'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.syncWaves:
+        httpRoute: 2
+
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '2'
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'HTTPRoute: renders nothing with empty values'
+
+    asserts:
+      - containsDocument:
+          kind: HTTPRoute
+          apiVersion: gateway.networking.k8s.io/v1
+        not: true
