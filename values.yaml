@@ -8,6 +8,23 @@ platform:
   # Optional Argo CD sync wave per resource kind; omit a key for no annotation.
   syncWaves: {}
 
+  # Platform-owned Azure settings. Applications without Azure access leave these empty.
+  # Each identity creates a new UAI by default; create: false references a shared UAI.
+  # Role grants apply only to new identities and are disabled unless explicitly requested.
+  azure:
+    resourceNamespace: azure-resources
+    federationAudience: api://AzureADTokenExchange
+    subscriptionId: ""
+    tenantId: ""
+    oidcIssuerUrl: ""
+    location: ""
+    identityResourceGroup: ""
+    keyVault: {name: "", resourceGroup: ""}
+    storageAccount: {name: "", resourceGroup: ""}
+    identities: {}
+    roleAssignments: {}
+    storageContainers: {}
+
   namespaceLabels:
     pod-security.kubernetes.io/enforce: restricted
     gitops.platform/gateway: public

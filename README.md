@@ -51,8 +51,8 @@ components:
 
 The platform supplies the namespace and hosts in an environment values file.
 The chart's `values.yaml` holds repeatable Gateway, resource, pod security,
-probe, Service and Rollout defaults. `_helpers.tpl` contains only the shared
-label function; `_pod.tpl` assembles the pod from those defaults. The optional
+probe, Service and Rollout defaults. `_helpers.tpl` contains shared rendering
+functions; `_pod.tpl` assembles the pod from those defaults. The optional
 `platform.gateway.httpRedirect.enabled` defaults to `true` and adds one HTTP
 redirect route per host. Set it to `false` only when the platform supplies the
 redirect elsewhere. Redirects attach to the Gateway's HTTP listener; application
@@ -66,6 +66,8 @@ Argo CD sync wave annotations are absent by default. Set only the resource kinds
 that need ordering in `platform.syncWaves`. Supported keys are `namespace`,
 `deployment`, `service`, `rollout`, `listenerSet` and `httpRoute`. Each configured
 wave applies to every rendered resource of that kind, including redirect routes.
+Azure resources also support `serviceAccount`, `userAssignedIdentity`,
+`federatedIdentityCredential`, `roleAssignment` and `storageContainer` keys.
 
 ```yaml
 platform:
@@ -75,6 +77,70 @@ platform:
     rollout: 0
     httpRoute: 10
 ```
+
+## Optional Azure resources
+
+The platform can set `platform.azure.identities` and
+`platform.azure.storageContainers` in environment values. The chart creates
+ServiceAccounts in the application namespace and ASO identity, federation,
+role and private Blob container resources in the existing `azure-resources`
+namespace. The ASO credential there is installed by GitOps; application pods
+never receive it. Kubernetes names include the namespace, release and a hash
+so multiple applications can safely use this central namespace. Azure names
+must still be unique and must name **new** resources; adopting an existing
+Terraform-owned identity or container needs a separate ownership transfer.
+
+An identity creates a new user-assigned managed identity by default, plus one
+federated credential for its application ServiceAccount. Set a component's
+`identity` to the identity map key. The ServiceAccount carries
+`azure.workload.identity/client-id` and tenant annotations, and the pod carries
+`azure.workload.identity/use: "true"`. The AKS Workload Identity webhook injects
+the Azure environment variables and token volume. Sidecars and init containers
+opt in with `azureIdentity: true`; the chart adds other container names to the
+webhook's skip-containers annotation.
+
+The platform supplies `identities.<name>.clientId` after provisioning. A first
+render can create identities, federation, roles and containers without workloads
+or a client ID; no ServiceAccount is emitted until its client ID is supplied.
+ASO exports client and principal IDs to separate central ConfigMaps. After ASO
+reports Ready, platform delivery reads the client ID and supplies it as a Helm
+input before enabling workloads. A workload referencing an identity without a
+client ID fails rendering. Sync waves alone cannot pass runtime values into a
+Helm render. This chart does not automate that delivery handoff; it must be
+implemented when wiring the GitOps application deployment. No Helm lookup or
+post-deployment annotation patch is used.
+
+For previews, set `create: false`, `azureName`, `resourceGroup` and `clientId`
+to reference a shared identity owned by platform GitOps. The chart creates its
+preview-specific federated credential and annotated ServiceAccount; platform
+GitOps grants the shared identity its Azure roles once. The shared identity
+itself is not provisioned by this chart. Azure limits the number of federated
+credentials on one identity, so preview concurrency needs a bounded policy
+before enabling this path. Keep real client IDs in platform deployment inputs.
+
+`platform.azure.roleAssignments` is a map of assignments, each with `identity`,
+`roleName` and `scope` (`keyVault` or `storageAccount`). The template builds the
+ARM scope from the platform resource configuration. For example:
+
+```yaml
+platform:
+  azure:
+    roleAssignments:
+      backend-blobs:
+        identity: backend
+        roleName: Storage Blob Data Reader
+        scope: storageAccount
+```
+
+Each assignment grants its configured role on the whole vault or storage account; do not enable them for disposable previews.
+Storage containers are private, created in the existing platform account, and
+do not imply a workload write grant. Keep account, vault, group, subscription,
+tenant and issuer values in platform-controlled deployment inputs, with real
+account IDs out of Git. Argo must have permission for the cross-namespace
+resources and health checks for ASO Ready conditions; configure sync waves in
+environment values when a workload must wait for Azure provisioning. Preview
+cleanup must remove the federated credential before the shared identity's
+platform lifecycle ends.
 
 ## Render the example
 

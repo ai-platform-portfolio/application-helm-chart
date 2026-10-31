@@ -1,0 +1,17 @@
+{{- range $name, $container := .Values.platform.azure.storageContainers }}
+{{- $scope := include "application.azureScope" (dict "root" $ "target" "storageAccount") }}
+apiVersion: storage.azure.com/v20230101
+kind: StorageAccountsBlobServicesContainer
+metadata:
+  name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}
+  namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
+  {{- if hasKey $.Values.platform.syncWaves "storageContainer" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "storageContainer" | quote }}
+  {{- end }}
+spec:
+  azureName: {{ $container.azureName | quote }}
+  owner: {armId: {{ printf "%s/blobServices/default" $scope | quote }}}
+  publicAccess: None
+---
+{{- end }}
