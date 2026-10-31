@@ -1,0 +1,88 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "application.name" . }}-backend
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    {{- include "application.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      app.kubernetes.io/component: backend
+
+  strategy:
+    canary:
+      stableService: {{ include "application.name" . }}-backend-stable
+      canaryService: {{ include "application.name" . }}-backend-canary
+      maxSurge: 1
+      maxUnavailable: 0
+      trafficRouting:
+        plugins:
+          argoproj-labs/gatewayAPI:
+            httpRoute: {{ include "application.name" . }}-backend
+            namespace: {{ .Values.namespace }}
+      steps:
+        - setWeight: 100
+
+  template:
+    metadata:
+      labels:
+        {{- include "application.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: backend
+          image: {{ required "backend.image is required" .Values.backend.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.port }}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+
+---
+{{- range $track := list "stable" "canary" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "application.name" $ }}-backend-{{ $track }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "application.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name | quote }}
+    app.kubernetes.io/component: backend
+  ports:
+    - name: http
+      port: {{ $.Values.backend.port }}
+      targetPort: http
+---
+{{- end }}

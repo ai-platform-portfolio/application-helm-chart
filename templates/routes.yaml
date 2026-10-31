@@ -1,0 +1,76 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "application.name" . }}-backend
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    {{- include "application.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ required "hostname is required" .Values.hostname | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: {{ .Values.gateway.listenerSet }}
+      namespace: {{ .Values.namespace }}
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: {{ include "application.name" . }}-backend-stable
+          port: {{ .Values.backend.port }}
+          weight: 100
+        - name: {{ include "application.name" . }}-backend-canary
+          port: {{ .Values.backend.port }}
+          weight: 0
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "application.name" . }}-frontend
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "application.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ .Values.hostname | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: {{ .Values.gateway.listenerSet }}
+      namespace: {{ .Values.namespace }}
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "application.name" . }}-frontend
+          port: {{ .Values.frontend.port }}
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "application.name" . }}-redirect
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "application.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ .Values.hostname | quote }}
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

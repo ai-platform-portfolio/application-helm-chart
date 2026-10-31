@@ -1,0 +1,30 @@
+namespace: ""
+hostname: ""
+
+gateway:
+  name: public
+  namespace: envoy-gateway-system
+  listenerSet: public
+  clusterIssuer: letsencrypt-azuredns
+
+frontend:
+  image: ""
+  replicas: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+backend:
+  image: ""
+  replicas: 1
+  port: 8000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi

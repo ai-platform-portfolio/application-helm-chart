@@ -1,0 +1,8 @@
+namespace: sample-production
+hostname: sample.example.com
+
+frontend:
+  image: example.invalid/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+backend:
+  image: example.invalid/backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
