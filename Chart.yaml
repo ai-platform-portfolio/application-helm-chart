@@ -1,6 +1,5 @@
 apiVersion: v2
 name: application
-description: Shared frontend and API deployment chart for the AI platform portfolio
+description: Reusable Kubernetes resource templates for portfolio applications
 type: application
 version: 0.1.0
-appVersion: "1.0"

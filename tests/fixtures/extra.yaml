@@ -1,0 +1,65 @@
+namespaces:
+  auxiliary:
+    name: auxiliary
+    labels: {purpose: test}
+
+deployments:
+  worker:
+    namespace: auxiliary
+    annotations: {example.test/owner: worker-team}
+    spec:
+      replicas: 2
+      selector:
+        matchLabels: {app: worker}
+      template:
+        metadata:
+          labels: {app: worker}
+        spec:
+          containers:
+            - {name: worker, image: example.invalid/worker@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+
+services:
+  worker:
+    namespace: auxiliary
+    spec:
+      selector: {app: worker}
+      ports:
+        - {name: http, port: 9000, targetPort: 9000}
+
+rollouts:
+  processor:
+    namespace: auxiliary
+    spec:
+      replicas: 2
+      selector:
+        matchLabels: {app: processor}
+      strategy:
+        canary:
+          steps:
+            - setWeight: 50
+            - pause: {}
+      template:
+        metadata:
+          labels: {app: processor}
+        spec:
+          containers:
+            - {name: processor, image: example.invalid/processor@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+
+listenerSets:
+  internal:
+    namespace: auxiliary
+    spec:
+      parentRef: {group: gateway.networking.k8s.io, kind: Gateway, name: public, namespace: envoy-gateway-system}
+      listeners:
+        - {name: http, protocol: HTTP, port: 80}
+
+httpRoutes:
+  worker:
+    namespace: auxiliary
+    spec:
+      hostnames: [worker.example.com]
+      parentRefs:
+        - {group: gateway.networking.k8s.io, kind: ListenerSet, name: internal, sectionName: http}
+      rules:
+        - backendRefs:
+            - {name: worker, port: 9000}

@@ -1,8 +1,6 @@
-namespace: sample-staging
-hostname: sample.staging.example.com
+namespace: poc-staging
+hostname: poc.staging.example.com
 
-frontend:
-  image: example.invalid/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
-
-backend:
-  image: example.invalid/backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+namespaces:
+  app:
+    name: poc-staging

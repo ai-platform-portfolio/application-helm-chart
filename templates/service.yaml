@@ -1,0 +1,9 @@
+{{- range $name, $resource := .Values.services }}
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "application.metadata" (dict "root" $ "name" $name "resource" $resource "namespaced" true) | nindent 2 }}
+spec:
+  {{- toYaml (required (printf "services.%s.spec is required" $name) $resource.spec) | nindent 2 }}
+---
+{{- end }}

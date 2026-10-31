@@ -1,8 +1,6 @@
 namespace: preview-pr-42
 hostname: pr-42.preview.example.com
 
-frontend:
-  image: example.invalid/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
-
-backend:
-  image: example.invalid/backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+namespaces:
+  app:
+    name: preview-pr-42

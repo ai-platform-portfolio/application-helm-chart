@@ -1,0 +1,156 @@
+# Shared resource definitions. Overlay one environment file for its namespace and host.
+namespaces:
+  app:
+    labels:
+      pod-security.kubernetes.io/enforce: restricted
+      gitops.platform/gateway: public
+
+deployments:
+  frontend:
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {app: poc-frontend}
+      template:
+        metadata:
+          labels: {app: poc-frontend}
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: frontend
+              image: example.invalid/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+              ports:
+                - {name: http, containerPort: 8080}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              readinessProbe:
+                httpGet: {path: /, port: http}
+              livenessProbe:
+                httpGet: {path: /, port: http}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: nginx-cache, mountPath: /var/cache/nginx}
+          volumes:
+            - {name: tmp, emptyDir: {}}
+            - {name: nginx-cache, emptyDir: {}}
+
+services:
+  frontend:
+    spec:
+      selector: {app: poc-frontend}
+      ports:
+        - {name: http, port: 8080, targetPort: http}
+
+  backend-stable:
+    spec:
+      selector: {app: poc-backend}
+      ports:
+        - {name: http, port: 8000, targetPort: http}
+
+  backend-canary:
+    spec:
+      selector: {app: poc-backend}
+      ports:
+        - {name: http, port: 8000, targetPort: http}
+
+rollouts:
+  backend:
+    spec:
+      replicas: 1
+      revisionHistoryLimit: 2
+      selector:
+        matchLabels: {app: poc-backend}
+      strategy:
+        canary:
+          stableService: backend-stable
+          canaryService: backend-canary
+          maxSurge: 1
+          maxUnavailable: 0
+          trafficRouting:
+            plugins:
+              argoproj-labs/gatewayAPI:
+                httpRoute: backend
+          steps:
+            - setWeight: 100
+      template:
+        metadata:
+          labels: {app: poc-backend}
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: backend
+              image: example.invalid/backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+              ports:
+                - {name: http, containerPort: 8000}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              readinessProbe:
+                httpGet: {path: /api/healthz, port: http}
+              livenessProbe:
+                httpGet: {path: /api/healthz, port: http}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 256Mi}
+
+listenerSets:
+  public:
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-azuredns
+    spec:
+      parentRef:
+        group: gateway.networking.k8s.io
+        kind: Gateway
+        name: public
+        namespace: envoy-gateway-system
+      listeners:
+        - name: https
+          protocol: HTTPS
+          port: 443
+          tls:
+            mode: Terminate
+            certificateRefs:
+              - name: poc-tls
+          allowedRoutes:
+            namespaces: {from: Same}
+
+httpRoutes:
+  backend:
+    spec:
+      parentRefs:
+        - {group: gateway.networking.k8s.io, kind: ListenerSet, name: public, sectionName: https}
+      rules:
+        - matches:
+            - path: {type: PathPrefix, value: /api}
+          backendRefs:
+            - {name: backend-stable, port: 8000, weight: 100}
+            - {name: backend-canary, port: 8000, weight: 0}
+
+  frontend:
+    spec:
+      parentRefs:
+        - {group: gateway.networking.k8s.io, kind: ListenerSet, name: public, sectionName: https}
+      rules:
+        - matches:
+            - path: {type: PathPrefix, value: /}
+          backendRefs:
+            - {name: frontend, port: 8080}
+
+  redirect:
+    spec:
+      parentRefs:
+        - {name: public, namespace: envoy-gateway-system, sectionName: http}
+      rules:
+        - filters:
+            - type: RequestRedirect
+              requestRedirect: {scheme: https, statusCode: 301}

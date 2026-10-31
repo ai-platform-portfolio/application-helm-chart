@@ -1,0 +1,13 @@
+{{- range $name, $resource := .Values.httpRoutes }}
+{{- $spec := deepCopy (required (printf "httpRoutes.%s.spec is required" $name) $resource.spec) }}
+{{- if and (not (hasKey $spec "hostnames")) $.Values.hostname }}
+  {{- $_ := set $spec "hostnames" (list $.Values.hostname) }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  {{- include "application.metadata" (dict "root" $ "name" $name "resource" $resource "namespaced" true) | nindent 2 }}
+spec:
+  {{- toYaml $spec | nindent 2 }}
+---
+{{- end }}

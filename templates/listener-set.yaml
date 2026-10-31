@@ -1,27 +1,15 @@
+{{- range $name, $resource := .Values.listenerSets }}
+{{- $spec := deepCopy (required (printf "listenerSets.%s.spec is required" $name) $resource.spec) }}
+{{- range $listener := $spec.listeners }}
+  {{- if and (not (hasKey $listener "hostname")) $.Values.hostname }}
+    {{- $_ := set $listener "hostname" $.Values.hostname }}
+  {{- end }}
+{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: ListenerSet
 metadata:
-  name: {{ .Values.gateway.listenerSet }}
-  namespace: {{ required "namespace is required" .Values.namespace }}
-  annotations:
-    cert-manager.io/cluster-issuer: {{ .Values.gateway.clusterIssuer | quote }}
-  labels:
-    {{- include "application.labels" . | nindent 4 }}
+  {{- include "application.metadata" (dict "root" $ "name" $name "resource" $resource "namespaced" true) | nindent 2 }}
 spec:
-  parentRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.gateway.namespace }}
-  listeners:
-    - name: https
-      hostname: {{ required "hostname is required" .Values.hostname | quote }}
-      protocol: HTTPS
-      port: 443
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - name: {{ include "application.name" . }}-tls
-      allowedRoutes:
-        namespaces:
-          from: Same
+  {{- toYaml $spec | nindent 2 }}
+---
+{{- end }}
