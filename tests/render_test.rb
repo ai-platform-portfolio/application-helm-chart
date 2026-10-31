@@ -131,5 +131,12 @@ class ChartRenderTest < Minitest::Test
                                             '--set', 'components.frontend.image=frontend:latest', chdir: ROOT)
     refute status.success?
     assert_match(/frontend(?:\/|\.)image/, error)
+
+    _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
+                                            '-f', 'examples/application.yaml',
+                                            '-f', 'examples/preview.yaml',
+                                            '--set', 'hosts.public.hostname=*.preview.example.com', chdir: ROOT)
+    refute status.success?
+    assert_includes error, 'hosts.public.hostname'
   end
 end

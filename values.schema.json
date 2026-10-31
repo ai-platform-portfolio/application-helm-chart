@@ -9,7 +9,7 @@
         "type": "object",
         "required": ["hostname"],
         "properties": {
-          "hostname": { "type": "string", "minLength": 1 }
+          "hostname": { "type": "string", "minLength": 1, "pattern": "^[^*]+$" }
         }
       }
     },

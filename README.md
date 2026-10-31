@@ -38,7 +38,8 @@ label function; `_pod.tpl` assembles the pod from those defaults. The optional
 redirect route per host. Set it to `false` only when the platform supplies the
 redirect elsewhere. Redirects attach to the Gateway's HTTP listener; application
 routes attach to the ListenerSet's HTTPS listener. Each host uses an exact
-hostname and its own certificate. Application routes remain separate per component
+hostname and its own certificate; the values schema rejects wildcard hosts.
+Application routes remain separate per component
 so Rollouts can manage the backend route's weights. The example Rollout promotes
 immediately. A later delivery change will add measured steps and blocking tests.
 
