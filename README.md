@@ -66,6 +66,8 @@ Argo CD sync wave annotations are absent by default. Set only the resource kinds
 that need ordering in `platform.syncWaves`. Supported keys are `namespace`,
 `deployment`, `service`, `rollout`, `listenerSet` and `httpRoute`. Each configured
 wave applies to every rendered resource of that kind, including redirect routes.
+Azure resources also support `serviceAccount`, `userAssignedIdentity`,
+`federatedIdentityCredential`, `roleAssignment` and `storageContainer` keys.
 
 ```yaml
 platform:
@@ -75,6 +77,47 @@ platform:
     rollout: 0
     httpRoute: 10
 ```
+
+## Optional Azure resources
+
+The platform can set `platform.azure.identities` and
+`platform.azure.storageContainers` in environment values. The chart creates
+ServiceAccounts in the application namespace and ASO identity, federation,
+role and private Blob container resources in the existing `azure-resources`
+namespace. The ASO credential there is installed by GitOps; application pods
+never receive it. Kubernetes names include the namespace, release and a hash
+so multiple applications can safely use this central namespace. Azure names
+must still be unique and must name **new** resources; adopting an existing
+Terraform-owned identity or container needs a separate ownership transfer.
+
+An identity creates a new user-assigned managed identity by default, plus one
+federated credential for its application ServiceAccount. Set a component's
+`identity` to the identity map key to project an Azure token and pass the
+client ID to its main container. Sidecars and init containers opt in with
+`azureIdentity: true`. ASO writes the public client ID to a ConfigMap in
+`azure-resources`; Reflector copies only that ConfigMap to the exact application
+namespace. The principal ID stays in `azure-resources` for role assignments.
+
+For previews, set `create: false`, `azureName`, `resourceGroup` and
+`clientIdConfigMap` to reference a shared identity owned by platform GitOps.
+The chart then creates only the preview-specific federated credential and
+ServiceAccount. The platform must separately mirror the shared public client
+ID ConfigMap into the preview namespace and grant that identity its Azure roles
+once. The shared identity itself is not provisioned by this chart. Azure limits
+the number of federated credentials on one identity, so preview concurrency
+needs a bounded policy before enabling this path.
+
+`keyVaultSecretsUser` and `storageBlobDataReader` are optional role assignments
+for newly created identities. Their scopes are the whole existing vault and
+storage account, respectively; do not enable them for disposable previews.
+Storage containers are private, created in the existing platform account, and
+do not imply a workload write grant. Keep account, vault, group, subscription,
+tenant and issuer values in platform-controlled deployment inputs, with real
+account IDs out of Git. Argo must have permission for the cross-namespace
+resources and health checks for ASO Ready conditions; configure sync waves in
+environment values when a workload must wait for Azure provisioning. Preview
+cleanup must remove the federated credential before the shared identity's
+platform lifecycle ends.
 
 ## Render the example
 

@@ -6,7 +6,8 @@
       "type": "object",
       "required": ["image"],
       "properties": {
-        "image": { "type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$" }
+        "image": { "type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$" },
+        "azureIdentity": { "type": "boolean" }
       }
     }
   },
@@ -23,9 +24,46 @@
             "service": { "type": "integer" },
             "rollout": { "type": "integer" },
             "listenerSet": { "type": "integer" },
-            "httpRoute": { "type": "integer" }
+            "httpRoute": { "type": "integer" },
+            "serviceAccount": { "type": "integer" },
+            "userAssignedIdentity": { "type": "integer" },
+            "federatedIdentityCredential": { "type": "integer" },
+            "roleAssignment": { "type": "integer" },
+            "storageContainer": { "type": "integer" }
           },
           "additionalProperties": false
+        },
+        "azure": {
+          "type": "object",
+          "properties": {
+            "identities": {
+              "type": "object",
+              "propertyNames": { "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63 },
+              "additionalProperties": {
+                "type": "object",
+                "required": ["azureName"],
+                "properties": {
+                  "azureName": { "type": "string", "minLength": 1 },
+                  "create": { "type": "boolean" },
+                  "resourceGroup": { "type": "string", "minLength": 1 },
+                  "clientIdConfigMap": { "type": "string", "minLength": 1 },
+                  "keyVaultSecretsUser": { "type": "boolean" },
+                  "storageBlobDataReader": { "type": "boolean" }
+                }
+              }
+            },
+            "storageContainers": {
+              "type": "object",
+              "propertyNames": { "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63 },
+              "additionalProperties": {
+                "type": "object",
+                "required": ["azureName"],
+                "properties": {
+                  "azureName": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$" }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -54,6 +92,7 @@
           "healthPath": { "type": "string", "pattern": "^/" },
           "replicas": { "type": "integer", "minimum": 1 },
           "resources": { "type": "object" },
+          "identity": { "type": "string", "minLength": 1 },
           "sidecars": {
             "type": "object",
             "additionalProperties": { "$ref": "#/definitions/extraContainer" }

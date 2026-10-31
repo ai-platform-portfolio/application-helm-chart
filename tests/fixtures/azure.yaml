@@ -1,0 +1,38 @@
+platform:
+  azure:
+    location: example-region
+    identityResourceGroup: example-identities
+    oidcIssuerUrl: https://issuer.example.invalid/
+    keyVault: {name: example-vault, resourceGroup: example-platform}
+    storageAccount: {name: examplestorage, resourceGroup: example-platform}
+    identities:
+      frontend:
+        azureName: id-example-frontend
+
+      backend:
+        azureName: id-example-backend
+        keyVaultSecretsUser: true
+        storageBlobDataReader: true
+
+    storageContainers:
+      app-files:
+        azureName: example-app-files
+
+      reports:
+        azureName: example-reports
+
+components:
+  frontend:
+    identity: frontend
+
+  backend:
+    identity: backend
+    sidecars:
+      telemetry:
+        image: example.invalid/telemetry@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        azureIdentity: true
+
+    initContainers:
+      prepare:
+        image: example.invalid/prepare@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        azureIdentity: true

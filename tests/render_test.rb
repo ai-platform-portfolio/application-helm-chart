@@ -152,6 +152,112 @@ class ChartRenderTest < Minitest::Test
     end
   end
 
+  def test_optional_azure_identities_roles_and_private_containers
+    args = ['--set', 'platform.azure.subscriptionId=example-subscription',
+            '--set', 'platform.azure.tenantId=example-tenant']
+    docs = render('examples/application.yaml', 'examples/preview.yaml',
+                  'tests/fixtures/azure.yaml', extra: args)
+    counts = docs.group_by { |doc| doc['kind'] }.transform_values(&:length)
+
+    assert_equal 2, counts['UserAssignedIdentity']
+    assert_equal 2, counts['FederatedIdentityCredential']
+    assert_equal 2, counts['ServiceAccount']
+    assert_equal 2, counts['RoleAssignment']
+    assert_equal 2, counts['StorageAccountsBlobServicesContainer']
+
+    identity = docs.find { |doc| doc['kind'] == 'UserAssignedIdentity' && doc['spec']['azureName'] == 'id-example-backend' }
+    identity_name = identity['metadata']['name']
+    assert_equal 'azure-resources', identity['metadata']['namespace']
+    assert_equal '/subscriptions/example-subscription/resourceGroups/example-identities', identity['spec']['owner']['armId']
+    client = identity['spec']['operatorSpec']['configMaps']['clientId']
+    assert_equal "#{identity_name}-client-id", client['name']
+    assert_equal '^preview-pr-42$', client['annotations']['reflector.v1.k8s.emberstack.com/reflection-auto-namespaces']
+    assert_equal "#{identity_name}-principal-id", identity['spec']['operatorSpec']['configMaps']['principalId']['name']
+    refute identity['spec']['operatorSpec']['configMaps']['principalId'].key?('annotations')
+    credential = find(docs, 'FederatedIdentityCredential', identity_name)
+    assert_equal 'system:serviceaccount:preview-pr-42:backend', credential['spec']['subject']
+    assert_equal identity_name, credential['spec']['owner']['name']
+
+    roles = docs.select { |doc| doc['kind'] == 'RoleAssignment' }
+    assert_equal %w[Key\ Vault\ Secrets\ User Storage\ Blob\ Data\ Reader].sort,
+                 roles.map { |role| role['spec']['roleDefinitionReference']['wellKnownName'] }.sort
+    assert roles.all? { |role| role['spec']['principalIdFromConfig']['name'] == "#{identity_name}-principal-id" }
+    assert roles.all? { |role| role['spec']['azureName'].match?(/\A[0-9a-f-]{36}\z/) }
+    assert_equal [
+      '/subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.KeyVault/vaults/example-vault',
+      '/subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.Storage/storageAccounts/examplestorage'
+    ], roles.map { |role| role['spec']['owner']['armId'] }.sort
+
+    container = docs.find { |doc| doc['kind'] == 'StorageAccountsBlobServicesContainer' && doc['spec']['azureName'] == 'example-app-files' }
+    assert_equal 'None', container['spec']['publicAccess']
+    assert_equal '/subscriptions/example-subscription/resourceGroups/example-platform/providers/Microsoft.Storage/storageAccounts/examplestorage/blobServices/default', container['spec']['owner']['armId']
+
+    %w[Deployment Rollout].zip(%w[frontend backend]).each do |kind, name|
+      pod = find(docs, kind, name)['spec']['template']['spec']
+      assert_equal name, pod['serviceAccountName']
+      assert_equal false, pod['automountServiceAccountToken']
+      assert_equal 'api://AzureADTokenExchange', pod['volumes'].last['projected']['sources'].first['serviceAccountToken']['audience']
+      source = docs.find { |doc| doc['kind'] == 'UserAssignedIdentity' && doc['spec']['azureName'] == "id-example-#{name}" }
+      assert_equal "#{source['metadata']['name']}-client-id", pod['containers'].first['env'].first['valueFrom']['configMapKeyRef']['name']
+    end
+
+    backend = find(docs, 'Rollout', 'backend')['spec']['template']['spec']
+    assert_equal "#{identity_name}-client-id", backend['containers'].last['env'].first['valueFrom']['configMapKeyRef']['name']
+    assert_equal '/var/run/secrets/azure/tokens', backend['initContainers'].first['volumeMounts'].first['mountPath']
+    refute backend['containers'].last.key?('azureIdentity')
+
+    azure_kinds = %w[UserAssignedIdentity FederatedIdentityCredential ServiceAccount RoleAssignment StorageAccountsBlobServicesContainer]
+    assert docs.select { |doc| azure_kinds.include?(doc['kind']) }
+               .all? { |doc| !doc.fetch('metadata', {}).fetch('annotations', {}).key?('argocd.argoproj.io/sync-wave') }
+    assert docs.select { |doc| azure_kinds.include?(doc['kind']) && doc['kind'] != 'ServiceAccount' }
+               .all? { |doc| doc['metadata']['namespace'] == 'azure-resources' }
+    assert_equal docs.map { |doc| [doc['kind'], doc['metadata']['namespace'], doc['metadata']['name']] }.uniq.length, docs.length
+    assert docs.all? { |doc| doc['metadata']['name'].length <= 63 }
+
+    args += ['--set', 'platform.syncWaves.userAssignedIdentity=0',
+             '--set', 'platform.syncWaves.roleAssignment=10',
+             '--set', 'platform.syncWaves.storageContainer=5']
+    with_waves = render('examples/application.yaml', 'examples/preview.yaml',
+                        'tests/fixtures/azure.yaml', extra: args)
+    assert_equal '0', find(with_waves, 'UserAssignedIdentity', identity_name)['metadata']['annotations']['argocd.argoproj.io/sync-wave']
+    assert_equal '10', with_waves.find { |doc| doc['kind'] == 'RoleAssignment' }['metadata']['annotations']['argocd.argoproj.io/sync-wave']
+    assert_equal '5', with_waves.find { |doc| doc['kind'] == 'StorageAccountsBlobServicesContainer' }['metadata']['annotations']['argocd.argoproj.io/sync-wave']
+  end
+
+  def test_shared_preview_identity_creates_only_a_federated_credential
+    args = ['--set', 'platform.azure.identities.shared.azureName=id-shared-preview',
+            '--set', 'platform.azure.identities.shared.create=false',
+            '--set', 'platform.azure.identities.shared.clientIdConfigMap=shared-preview-client-id',
+            '--set', 'platform.azure.identityResourceGroup=rg-preview',
+            '--set', 'platform.azure.subscriptionId=example-subscription',
+            '--set', 'platform.azure.tenantId=example-tenant',
+            '--set', 'platform.azure.oidcIssuerUrl=https://issuer.example.invalid/',
+            '--set', 'components.backend.identity=shared']
+    docs = render('examples/application.yaml', 'examples/preview.yaml', extra: args)
+
+    refute docs.any? { |doc| doc['kind'] == 'UserAssignedIdentity' || doc['kind'] == 'RoleAssignment' }
+    credential = docs.find { |doc| doc['kind'] == 'FederatedIdentityCredential' }
+    assert_equal 'azure-resources', credential['metadata']['namespace']
+    assert_equal 'system:serviceaccount:preview-pr-42:shared', credential['spec']['subject']
+    assert_equal '/subscriptions/example-subscription/resourceGroups/rg-preview/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-shared-preview', credential['spec']['owner']['armId']
+    assert_equal 'shared-preview-client-id', find(docs, 'Rollout', 'backend')['spec']['template']['spec']['containers'].first['env'].first['valueFrom']['configMapKeyRef']['name']
+
+    _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
+      '-f', 'examples/application.yaml', '-f', 'examples/preview.yaml',
+      *args, '--set', 'platform.azure.identities.shared.storageBlobDataReader=true', chdir: ROOT)
+    refute status.success?
+    assert_includes error, 'assign its roles once in platform GitOps'
+  end
+
+  def test_undefined_identity_is_rejected
+    _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
+                                            '-f', 'examples/application.yaml',
+                                            '-f', 'examples/preview.yaml',
+                                            '--set', 'components.frontend.identity=missing', chdir: ROOT)
+    refute status.success?
+    assert_includes error, 'references undefined identity missing'
+  end
+
   def test_missing_namespace_and_mutable_image_are_rejected
     _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
                                             '-f', 'examples/application.yaml',

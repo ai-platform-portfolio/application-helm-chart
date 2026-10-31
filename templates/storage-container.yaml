@@ -1,0 +1,18 @@
+{{- range $name, $container := .Values.platform.azure.storageContainers }}
+{{- $account := $.Values.platform.azure.storageAccount }}
+{{- $scope := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s" (required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId) (required "platform.azure.storageAccount.resourceGroup is required" $account.resourceGroup) (required "platform.azure.storageAccount.name is required" $account.name) }}
+apiVersion: storage.azure.com/v20230101
+kind: StorageAccountsBlobServicesContainer
+metadata:
+  name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}
+  namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
+  {{- if hasKey $.Values.platform.syncWaves "storageContainer" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "storageContainer" | quote }}
+  {{- end }}
+spec:
+  azureName: {{ $container.azureName | quote }}
+  owner: {armId: {{ printf "%s/blobServices/default" $scope | quote }}}
+  publicAccess: None
+---
+{{- end }}

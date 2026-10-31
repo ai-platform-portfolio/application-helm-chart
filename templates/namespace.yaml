@@ -1,4 +1,4 @@
-{{- if or .Values.components .Values.hosts }}
+{{- if or .Values.components .Values.hosts .Values.platform.azure.identities .Values.platform.azure.storageContainers }}
 apiVersion: v1
 kind: Namespace
 metadata:
