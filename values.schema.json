@@ -1,8 +1,34 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
+  "definitions": {
+    "extraContainer": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "image": { "type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$" }
+      }
+    }
+  },
   "properties": {
     "namespace": { "type": "string" },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "syncWaves": {
+          "type": "object",
+          "properties": {
+            "namespace": { "type": "integer" },
+            "deployment": { "type": "integer" },
+            "service": { "type": "integer" },
+            "rollout": { "type": "integer" },
+            "listenerSet": { "type": "integer" },
+            "httpRoute": { "type": "integer" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
     "hosts": {
       "type": "object",
       "additionalProperties": {
@@ -28,6 +54,14 @@
           "healthPath": { "type": "string", "pattern": "^/" },
           "replicas": { "type": "integer", "minimum": 1 },
           "resources": { "type": "object" },
+          "sidecars": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/definitions/extraContainer" }
+          },
+          "initContainers": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/definitions/extraContainer" }
+          },
           "route": {
             "type": "object",
             "required": ["host", "path"],

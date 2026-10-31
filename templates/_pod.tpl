@@ -10,6 +10,16 @@ spec:
   securityContext:
     {{- toYaml .root.Values.platform.pod.securityContext | nindent 4 }}
 
+  {{- if .component.initContainers }}
+  initContainers:
+    {{- range $name, $config := .component.initContainers }}
+    {{- if or (eq $name $.name) (hasKey (default dict $.component.sidecars) $name) }}
+    {{- fail (printf "container name %s is duplicated in component %s" $name $.name) }}
+    {{- end }}
+    - {{ include "application.extraContainer" (dict "root" $.root "name" $name "config" $config) | nindent 6 | trim }}
+    {{- end }}
+  {{- end }}
+
   containers:
     - name: {{ .name }}
       image: {{ .component.image | quote }}
@@ -32,6 +42,13 @@ spec:
 
       volumeMounts:
         {{- toYaml .root.Values.platform.pod.volumeMounts | nindent 8 }}
+
+    {{- range $name, $config := .component.sidecars }}
+    {{- if eq $name $.name }}
+    {{- fail (printf "container name %s is duplicated in component %s" $name $.name) }}
+    {{- end }}
+    - {{ include "application.extraContainer" (dict "root" $.root "name" $name "config" $config) | nindent 6 | trim }}
+    {{- end }}
 
   volumes:
     {{- toYaml .root.Values.platform.pod.volumes | nindent 4 }}

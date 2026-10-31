@@ -7,6 +7,10 @@ metadata:
   namespace: {{ required "namespace is required" $.Values.namespace | quote }}
   labels:
     {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
+  {{- if hasKey $.Values.platform.syncWaves "rollout" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "rollout" | quote }}
+  {{- end }}
 spec:
   replicas: {{ default $.Values.platform.replicas $component.replicas }}
   revisionHistoryLimit: {{ $.Values.platform.revisionHistoryLimit }}

@@ -1,0 +1,25 @@
+components:
+  frontend:
+    sidecars:
+      telemetry:
+        image: example.invalid/telemetry@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        command: ["/collector"]
+        ports:
+          - {name: metrics, containerPort: 9090}
+        resources:
+          requests:
+            cpu: 25m
+
+    initContainers:
+      prepare:
+        image: example.invalid/prepare@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        command: ["/prepare"]
+
+  backend:
+    sidecars:
+      metrics:
+        image: example.invalid/metrics@sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+    initContainers:
+      configure:
+        image: example.invalid/configure@sha256:0000000000000000000000000000000000000000000000000000000000000000

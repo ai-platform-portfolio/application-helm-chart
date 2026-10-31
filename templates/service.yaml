@@ -11,6 +11,10 @@ metadata:
   namespace: {{ required "namespace is required" $.Values.namespace | quote }}
   labels:
     {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
+  {{- if hasKey $.Values.platform.syncWaves "service" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "service" | quote }}
+  {{- end }}
 spec:
   selector:
     app.kubernetes.io/instance: {{ $.Release.Name | quote }}

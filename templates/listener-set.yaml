@@ -6,6 +6,9 @@ metadata:
   namespace: {{ required "namespace is required" $.Values.namespace | quote }}
   annotations:
     cert-manager.io/cluster-issuer: {{ $.Values.platform.gateway.clusterIssuer | quote }}
+    {{- if hasKey $.Values.platform.syncWaves "listenerSet" }}
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "listenerSet" | quote }}
+    {{- end }}
 spec:
   parentRef:
     group: gateway.networking.k8s.io

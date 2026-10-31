@@ -117,6 +117,41 @@ class ChartRenderTest < Minitest::Test
     assert_nil find(without_redirect, 'HTTPRoute', 'public-redirect')
   end
 
+  def test_extra_containers_and_optional_sync_waves
+    docs = render('examples/application.yaml', 'examples/preview.yaml',
+                  'tests/fixtures/containers.yaml')
+
+    assert docs.all? { |doc| !doc.fetch('metadata', {}).fetch('annotations', {}).key?('argocd.argoproj.io/sync-wave') }
+
+    %w[Deployment Rollout].zip(%w[frontend backend]).each do |kind, name|
+      pod = find(docs, kind, name)['spec']['template']['spec']
+      assert_equal 2, pod['containers'].length
+      assert_equal 1, pod['initContainers'].length
+      assert_equal true, pod['containers'].last['securityContext']['readOnlyRootFilesystem']
+      assert_equal true, pod['initContainers'].first['securityContext']['readOnlyRootFilesystem']
+    end
+
+    frontend = find(docs, 'Deployment', 'frontend')['spec']['template']['spec']
+    assert_equal 'telemetry', frontend['containers'].last['name']
+    assert_equal 9090, frontend['containers'].last['ports'].first['containerPort']
+    assert_equal '25m', frontend['containers'].last['resources']['requests']['cpu']
+    assert_equal '128Mi', frontend['containers'].last['resources']['requests']['memory']
+    assert_equal 'prepare', frontend['initContainers'].first['name']
+
+    waves = { 'namespace' => -20, 'service' => -10, 'listenerSet' => -5,
+              'deployment' => 0, 'rollout' => 1, 'httpRoute' => 2 }
+    args = waves.flat_map { |kind, wave| ['--set', "platform.syncWaves.#{kind}=#{wave}"] }
+    with_waves = render('examples/application.yaml', 'examples/preview.yaml', extra: args)
+    kinds = { 'Namespace' => 'namespace', 'Deployment' => 'deployment',
+              'Service' => 'service', 'Rollout' => 'rollout',
+              'ListenerSet' => 'listenerSet', 'HTTPRoute' => 'httpRoute' }
+
+    with_waves.each do |doc|
+      assert_equal waves[kinds.fetch(doc['kind'])].to_s,
+                   doc['metadata']['annotations']['argocd.argoproj.io/sync-wave']
+    end
+  end
+
   def test_missing_namespace_and_mutable_image_are_rejected
     _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
                                             '-f', 'examples/application.yaml',
@@ -138,5 +173,13 @@ class ChartRenderTest < Minitest::Test
                                             '--set', 'hosts.public.hostname=*.preview.example.com', chdir: ROOT)
     refute status.success?
     assert_match(%r{(?:hosts\.public\.hostname|/hosts/public/hostname)}, error)
+
+    _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
+                                            '-f', 'examples/application.yaml',
+                                            '-f', 'examples/preview.yaml',
+                                            '-f', 'tests/fixtures/containers.yaml',
+                                            '--set', 'components.frontend.sidecars.telemetry.image=telemetry:latest', chdir: ROOT)
+    refute status.success?
+    assert_match(/telemetry(?:\/|\.)image/, error)
   end
 end

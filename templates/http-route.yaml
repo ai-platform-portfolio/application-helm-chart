@@ -6,6 +6,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $name }}
   namespace: {{ required "namespace is required" $.Values.namespace | quote }}
+  {{- if hasKey $.Values.platform.syncWaves "httpRoute" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "httpRoute" | quote }}
+  {{- end }}
 spec:
   hostnames:
     - {{ $host.hostname | quote }}
@@ -42,6 +46,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $name }}-redirect
   namespace: {{ required "namespace is required" $.Values.namespace | quote }}
+  {{- if hasKey $.Values.platform.syncWaves "httpRoute" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "httpRoute" | quote }}
+  {{- end }}
 spec:
   hostnames:
     - {{ $host.hostname | quote }}

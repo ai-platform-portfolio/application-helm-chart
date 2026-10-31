@@ -5,6 +5,9 @@ components: {}
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  # Optional Argo CD sync wave per resource kind; omit a key for no annotation.
+  syncWaves: {}
+
   namespaceLabels:
     pod-security.kubernetes.io/enforce: restricted
     gitops.platform/gateway: public
