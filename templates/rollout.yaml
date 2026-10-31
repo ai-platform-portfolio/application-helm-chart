@@ -1,0 +1,41 @@
+{{- range $name, $component := .Values.components }}
+{{- if eq $component.delivery "rollout" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ $name }}
+  namespace: {{ required "namespace is required" $.Values.namespace | quote }}
+  labels:
+    {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
+  {{- if hasKey $.Values.platform.syncWaves "rollout" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "rollout" | quote }}
+  {{- end }}
+spec:
+  replicas: {{ default $.Values.platform.replicas $component.replicas }}
+  revisionHistoryLimit: {{ $.Values.platform.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name | quote }}
+      app.kubernetes.io/component: {{ $name | quote }}
+
+  strategy:
+    canary:
+      stableService: {{ $name }}-stable
+      canaryService: {{ $name }}-canary
+      maxSurge: {{ $.Values.platform.rollout.maxSurge }}
+      maxUnavailable: {{ $.Values.platform.rollout.maxUnavailable }}
+      {{- if $component.route }}
+      trafficRouting:
+        plugins:
+          argoproj-labs/gatewayAPI:
+            httpRoute: {{ $name }}
+      {{- end }}
+      steps:
+        {{- toYaml $.Values.platform.rollout.steps | nindent 8 }}
+
+  template:
+    {{- include "application.podTemplate" (dict "root" $ "name" $name "component" $component) | nindent 4 }}
+---
+{{- end }}
+{{- end }}

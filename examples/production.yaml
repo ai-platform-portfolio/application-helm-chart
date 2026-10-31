@@ -1,0 +1,5 @@
+# Platform environment overlay.
+namespace: poc-production
+hosts:
+  public:
+    hostname: poc.example.com

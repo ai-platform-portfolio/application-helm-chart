@@ -1,0 +1,21 @@
+# A second host and two more workloads prove the maps scale without new templates.
+hosts:
+  internal:
+    hostname: internal.preview.example.com
+
+components:
+  worker:
+    image: example.invalid/worker@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    port: 9000
+    healthPath: /healthz
+    replicas: 2
+    resources:
+      requests:
+        cpu: 250m
+
+  processor:
+    delivery: rollout
+    image: example.invalid/processor@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    port: 9001
+    healthPath: /healthz
+    route: {host: internal, path: /processor}

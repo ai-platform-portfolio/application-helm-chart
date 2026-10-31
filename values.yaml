@@ -1,0 +1,73 @@
+# Application values normally set only namespace, hosts and components.
+namespace: ""
+hosts: {}
+components: {}
+
+# Platform defaults. Applications can override replicas or resources when needed.
+platform:
+  # Optional Argo CD sync wave per resource kind; omit a key for no annotation.
+  syncWaves: {}
+
+  namespaceLabels:
+    pod-security.kubernetes.io/enforce: restricted
+    gitops.platform/gateway: public
+
+  gateway:
+    name: public
+    namespace: envoy-gateway-system
+    clusterIssuer: letsencrypt-azuredns
+    pathMatchType: PathPrefix
+    listener:
+      name: https
+      protocol: HTTPS
+      port: 443
+      tlsMode: Terminate
+      allowedRoutesFrom: Same
+    httpRedirect:
+      enabled: true
+      listenerName: http
+      scheme: https
+      statusCode: 301
+
+  replicas: 1
+  revisionHistoryLimit: 2
+  httpPortName: http
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+  pod:
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    volumeMounts:
+      - {name: tmp, mountPath: /tmp}
+      - {name: nginx-cache, mountPath: /var/cache/nginx}
+    volumes:
+      - {name: tmp, emptyDir: {}}
+      - {name: nginx-cache, emptyDir: {}}
+
+  probes:
+    readiness:
+      httpGet: {port: http}
+    liveness:
+      httpGet: {port: http}
+
+  rollout:
+    maxSurge: 1
+    maxUnavailable: 0
+    initialStableWeight: 100
+    initialCanaryWeight: 0
+    steps:
+      - setWeight: 100

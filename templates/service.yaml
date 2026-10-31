@@ -1,0 +1,28 @@
+{{- range $name, $component := .Values.components }}
+{{- $services := list $name }}
+{{- if eq $component.delivery "rollout" }}
+  {{- $services = list (printf "%s-stable" $name) (printf "%s-canary" $name) }}
+{{- end }}
+{{- range $service := $services }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service }}
+  namespace: {{ required "namespace is required" $.Values.namespace | quote }}
+  labels:
+    {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
+  {{- if hasKey $.Values.platform.syncWaves "service" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "service" | quote }}
+  {{- end }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name | quote }}
+    app.kubernetes.io/component: {{ $name | quote }}
+  ports:
+    - name: {{ $.Values.platform.httpPortName }}
+      port: {{ $component.port }}
+      targetPort: {{ $.Values.platform.httpPortName }}
+---
+{{- end }}
+{{- end }}

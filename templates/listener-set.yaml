@@ -1,0 +1,31 @@
+{{- range $name, $host := .Values.hosts }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ required "namespace is required" $.Values.namespace | quote }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ $.Values.platform.gateway.clusterIssuer | quote }}
+    {{- if hasKey $.Values.platform.syncWaves "listenerSet" }}
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "listenerSet" | quote }}
+    {{- end }}
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ $.Values.platform.gateway.name }}
+    namespace: {{ $.Values.platform.gateway.namespace }}
+  listeners:
+    - name: {{ $.Values.platform.gateway.listener.name }}
+      hostname: {{ $host.hostname | quote }}
+      protocol: {{ $.Values.platform.gateway.listener.protocol }}
+      port: {{ $.Values.platform.gateway.listener.port }}
+      tls:
+        mode: {{ $.Values.platform.gateway.listener.tlsMode }}
+        certificateRefs:
+          - name: {{ $name }}-tls
+      allowedRoutes:
+        namespaces:
+          from: {{ $.Values.platform.gateway.listener.allowedRoutesFrom }}
+---
+{{- end }}

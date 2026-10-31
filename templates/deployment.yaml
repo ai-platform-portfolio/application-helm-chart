@@ -1,0 +1,25 @@
+{{- range $name, $component := .Values.components }}
+{{- if eq (default "deployment" $component.delivery) "deployment" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ required "namespace is required" $.Values.namespace | quote }}
+  labels:
+    {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
+  {{- if hasKey $.Values.platform.syncWaves "deployment" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "deployment" | quote }}
+  {{- end }}
+spec:
+  replicas: {{ default $.Values.platform.replicas $component.replicas }}
+  revisionHistoryLimit: {{ $.Values.platform.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name | quote }}
+      app.kubernetes.io/component: {{ $name | quote }}
+  template:
+    {{- include "application.podTemplate" (dict "root" $ "name" $name "component" $component) | nindent 4 }}
+---
+{{- end }}
+{{- end }}

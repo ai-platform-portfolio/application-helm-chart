@@ -1,0 +1,5 @@
+# Platform environment overlay.
+namespace: preview-pr-42
+hosts:
+  public:
+    hostname: pr-42.preview.example.com

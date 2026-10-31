@@ -1,0 +1,14 @@
+# Developer-facing inputs for the example app.
+components:
+  frontend:
+    image: example.invalid/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    port: 8080
+    healthPath: /
+    route: {host: public, path: /}
+
+  backend:
+    delivery: rollout
+    image: example.invalid/backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    port: 8000
+    healthPath: /api/healthz
+    route: {host: public, path: /api}
