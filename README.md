@@ -170,7 +170,7 @@ done
 
 Each YAML suite under `tests/` targets a resource or a related resource group,
 with shared inputs in `tests/fixtures/`. `identity.yaml` groups managed identities,
-federated credentials and their role assignments; `gateway.yaml` groups
+federated credentials and their role assignments; `gateway-routes.yaml` groups
 ListenerSets and HTTPRoutes. Their suites select each resource kind explicitly.
 Keep assertions expanded and test cases
 separated by blank lines. The suites check rendered resources and invalid inputs

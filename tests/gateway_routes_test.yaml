@@ -1,7 +1,7 @@
 suite: Gateway listeners and routes
 
 templates:
-  - templates/gateway.yaml
+  - templates/gateway-routes.yaml
 
 release:
   name: poc
