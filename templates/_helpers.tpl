@@ -21,3 +21,17 @@ app.kubernetes.io/managed-by: {{ .root.Release.Service | quote }}
 {{- end -}}
 {{- toYaml $container -}}
 {{- end -}}
+
+{{- define "application.azureScope" -}}
+{{- $azure := .root.Values.platform.azure -}}
+{{- $resource := index $azure .target -}}
+{{- $provider := "" -}}
+{{- if eq .target "keyVault" -}}
+{{- $provider = "Microsoft.KeyVault/vaults" -}}
+{{- else if eq .target "storageAccount" -}}
+{{- $provider = "Microsoft.Storage/storageAccounts" -}}
+{{- else -}}
+{{- fail (printf "unsupported Azure scope target %s" .target) -}}
+{{- end -}}
+{{- printf "/subscriptions/%s/resourceGroups/%s/providers/%s/%s" (required "platform.azure.subscriptionId is required" $azure.subscriptionId) (required (printf "platform.azure.%s.resourceGroup is required" .target) $resource.resourceGroup) $provider (required (printf "platform.azure.%s.name is required" .target) $resource.name) -}}
+{{- end -}}

@@ -226,6 +226,15 @@ class ChartRenderTest < Minitest::Test
     assert_equal '5', with_waves.find { |doc| doc['kind'] == 'StorageAccountsBlobServicesContainer' }['metadata']['annotations']['argocd.argoproj.io/sync-wave']
   end
 
+  def test_role_name_is_configurable
+    docs = render('examples/application.yaml', 'examples/preview.yaml', 'tests/fixtures/azure.yaml',
+      extra: ['--set', 'platform.azure.subscriptionId=example-subscription',
+              '--set', 'platform.azure.tenantId=example-tenant',
+              '--set', 'platform.azure.roleAssignments.backend-blobs.roleName=Storage Blob Data Contributor'])
+    assert docs.any? { |doc| doc['kind'] == 'RoleAssignment' &&
+      doc['spec']['roleDefinitionReference']['wellKnownName'] == 'Storage Blob Data Contributor' }
+  end
+
   def test_shared_preview_identity_creates_only_a_federated_credential
     args = ['--set', 'platform.azure.identities.shared.azureName=id-shared-preview',
             '--set', 'platform.azure.identities.shared.create=false',
@@ -248,7 +257,9 @@ class ChartRenderTest < Minitest::Test
 
     _output, error, status = Open3.capture3('helm', 'template', 'poc', '.',
       '-f', 'examples/application.yaml', '-f', 'examples/preview.yaml',
-      *args, '--set', 'platform.azure.identities.shared.storageBlobDataReader=true', chdir: ROOT)
+      *args, '--set', 'platform.azure.roleAssignments.reader.identity=shared',
+      '--set', 'platform.azure.roleAssignments.reader.roleName=Reader',
+      '--set', 'platform.azure.roleAssignments.reader.scope=storageAccount', chdir: ROOT)
     refute status.success?
     assert_includes error, 'assign its roles once in platform GitOps'
   end

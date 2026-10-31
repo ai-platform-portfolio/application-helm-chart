@@ -46,10 +46,37 @@
                   "azureName": { "type": "string", "minLength": 1 },
                   "create": { "type": "boolean" },
                   "resourceGroup": { "type": "string", "minLength": 1 },
-                  "clientId": { "type": "string", "minLength": 1 },
-                  "keyVaultSecretsUser": { "type": "boolean" },
-                  "storageBlobDataReader": { "type": "boolean" }
+                  "clientId": { "type": "string", "minLength": 1 }
+
                 }
+              }
+            },
+            "roleAssignments": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "identity",
+                  "roleName",
+                  "scope"
+                ],
+                "properties": {
+                  "identity": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "roleName": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "scope": {
+                    "enum": [
+                      "keyVault",
+                      "storageAccount"
+                    ]
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "storageContainers": {

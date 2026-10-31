@@ -13,8 +13,18 @@ platform:
       backend:
         azureName: id-example-backend
         clientId: 00000000-0000-0000-0000-000000000002
-        keyVaultSecretsUser: true
-        storageBlobDataReader: true
+
+
+    roleAssignments:
+      backend-secrets:
+        identity: backend
+        roleName: Key Vault Secrets User
+        scope: keyVault
+
+      backend-blobs:
+        identity: backend
+        roleName: Storage Blob Data Reader
+        scope: storageAccount
 
     storageContainers:
       app-files:

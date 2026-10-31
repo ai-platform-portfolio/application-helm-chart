@@ -1,15 +1,14 @@
-{{- range $name, $identity := .Values.platform.azure.identities }}
-{{- if and (eq $identity.create false) (or $identity.keyVaultSecretsUser $identity.storageBlobDataReader) }}
-{{- fail (printf "identity %s uses an existing managed identity; assign its roles once in platform GitOps" $name) }}
+{{- range $name, $assignment := .Values.platform.azure.roleAssignments }}
+{{- $identity := required (printf "role assignment %s references undefined identity %s" $name $assignment.identity) (index $.Values.platform.azure.identities $assignment.identity) }}
+{{- if eq $identity.create false }}
+{{- fail (printf "identity %s uses an existing managed identity; assign its roles once in platform GitOps" $assignment.identity) }}
 {{- end }}
-{{- if $identity.keyVaultSecretsUser }}
-{{- $vault := $.Values.platform.azure.keyVault }}
-{{- $scope := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.KeyVault/vaults/%s" (required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId) (required "platform.azure.keyVault.resourceGroup is required" $vault.resourceGroup) (required "platform.azure.keyVault.name is required" $vault.name) }}
-{{- $hash := sha256sum (printf "%s/%s/Key Vault Secrets User" $scope $identity.azureName) | trunc 32 }}
+{{- $scope := include "application.azureScope" (dict "root" $ "target" $assignment.scope) }}
+{{- $hash := sha256sum (printf "%s/%s/%s" $scope $identity.azureName $assignment.roleName) | trunc 32 }}
 apiVersion: authorization.azure.com/v1api20220401
 kind: RoleAssignment
 metadata:
-  name: {{ include "application.azureResourceName" (dict "root" $ "name" (printf "%s-kv-reader" $name)) }}
+  name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
   {{- if hasKey $.Values.platform.syncWaves "roleAssignment" }}
   annotations:
@@ -18,32 +17,9 @@ metadata:
 spec:
   azureName: {{ printf "%s-%s-%s-%s-%s" (substr 0 8 $hash) (substr 8 12 $hash) (substr 12 16 $hash) (substr 16 20 $hash) (substr 20 32 $hash) | quote }}
   owner: {armId: {{ $scope | quote }}}
-  principalIdFromConfig: {name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}-principal-id, key: principalId}
+  principalIdFromConfig: {name: {{ include "application.azureResourceName" (dict "root" $ "name" $assignment.identity) }}-principal-id, key: principalId}
   principalType: ServicePrincipal
   roleDefinitionReference:
-    wellKnownName: Key Vault Secrets User
+    wellKnownName: {{ $assignment.roleName | quote }}
 ---
-{{- end }}
-{{- if $identity.storageBlobDataReader }}
-{{- $account := $.Values.platform.azure.storageAccount }}
-{{- $scope := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s" (required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId) (required "platform.azure.storageAccount.resourceGroup is required" $account.resourceGroup) (required "platform.azure.storageAccount.name is required" $account.name) }}
-{{- $hash := sha256sum (printf "%s/%s/Storage Blob Data Reader" $scope $identity.azureName) | trunc 32 }}
-apiVersion: authorization.azure.com/v1api20220401
-kind: RoleAssignment
-metadata:
-  name: {{ include "application.azureResourceName" (dict "root" $ "name" (printf "%s-blob-reader" $name)) }}
-  namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
-  {{- if hasKey $.Values.platform.syncWaves "roleAssignment" }}
-  annotations:
-    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "roleAssignment" | quote }}
-  {{- end }}
-spec:
-  azureName: {{ printf "%s-%s-%s-%s-%s" (substr 0 8 $hash) (substr 8 12 $hash) (substr 12 16 $hash) (substr 16 20 $hash) (substr 20 32 $hash) | quote }}
-  owner: {armId: {{ $scope | quote }}}
-  principalIdFromConfig: {name: {{ include "application.azureResourceName" (dict "root" $ "name" $name) }}-principal-id, key: principalId}
-  principalType: ServicePrincipal
-  roleDefinitionReference:
-    wellKnownName: Storage Blob Data Reader
----
-{{- end }}
 {{- end }}

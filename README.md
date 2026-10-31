@@ -118,9 +118,21 @@ itself is not provisioned by this chart. Azure limits the number of federated
 credentials on one identity, so preview concurrency needs a bounded policy
 before enabling this path. Keep real client IDs in platform deployment inputs.
 
-`keyVaultSecretsUser` and `storageBlobDataReader` are optional role assignments
-for newly created identities. Their scopes are the whole existing vault and
-storage account, respectively; do not enable them for disposable previews.
+`platform.azure.roleAssignments` is a map of assignments, each with `identity`,
+`roleName` and `scope` (`keyVault` or `storageAccount`). The template builds the
+ARM scope from the platform resource configuration. For example:
+
+```yaml
+platform:
+  azure:
+    roleAssignments:
+      backend-blobs:
+        identity: backend
+        roleName: Storage Blob Data Reader
+        scope: storageAccount
+```
+
+Each assignment grants its configured role on the whole vault or storage account; do not enable them for disposable previews.
 Storage containers are private, created in the existing platform account, and
 do not imply a workload write grant. Keep account, vault, group, subscription,
 tenant and issuer values in platform-controlled deployment inputs, with real

@@ -1,6 +1,5 @@
 {{- range $name, $container := .Values.platform.azure.storageContainers }}
-{{- $account := $.Values.platform.azure.storageAccount }}
-{{- $scope := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s" (required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId) (required "platform.azure.storageAccount.resourceGroup is required" $account.resourceGroup) (required "platform.azure.storageAccount.name is required" $account.name) }}
+{{- $scope := include "application.azureScope" (dict "root" $ "target" "storageAccount") }}
 apiVersion: storage.azure.com/v20230101
 kind: StorageAccountsBlobServicesContainer
 metadata:

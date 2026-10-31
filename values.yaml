@@ -22,8 +22,8 @@ platform:
     keyVault: {name: "", resourceGroup: ""}
     storageAccount: {name: "", resourceGroup: ""}
     identities: {}
+    roleAssignments: {}
     storageContainers: {}
-
 
   namespaceLabels:
     pod-security.kubernetes.io/enforce: restricted
