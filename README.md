@@ -205,14 +205,19 @@ checks and lifecycle configuration. CI still plans/lints/tests changes; CNPG
 still handles database provisioning and backup/recovery. Deleting an Atlas CR
 does not delete its SQL objects, so preview cleanup remains explicit.
 
-The intended self-service interface is native Atlas HCL in application source,
-reusable policies/definitions alongside the existing Terraform module library,
-CI publishing reviewed revisions, and a small Helm reference selecting the
-revision to deploy. Sharing a library repository does not require Terraform to
-execute Atlas. This authoring layout is an agreed direction, not implemented
-behavior: the current role template still generates HCL from values and needs
-revision before that interface is complete. No schema or role should be
-reconciled by both Terraform and the operator.
+The self-service interface is the application's Helm values: `postgres.databases`,
+`postgres.roles` and `postgres.migrations`. The chart renders CNPG `Database`,
+`AtlasSchema` and `AtlasMigration` resources; the operators reconcile them.
+Developers declare roles once in `postgres.roles`, and the chart generates their
+Atlas HCL. Platform values supply the shared connections, exact ownership scope
+and review settings. There is no additional Atlas library in the Terraform
+repository or Terraform ownership of these SQL objects.
+
+Application migration files belong with application code. The migration values
+reference a versioned Atlas registry artifact and its revision; publishing those
+artifacts remains delivery integration work. Migration files describe application
+schema changes and do not require a second declaration of the chart-owned roles.
+Preview delivery, cleanup and rollback still need the integration tests below.
 
 Sources: [Atlas operator](https://atlasgo.io/integrations/kubernetes),
 [Terraform provider](https://atlasgo.io/integrations/terraform),
