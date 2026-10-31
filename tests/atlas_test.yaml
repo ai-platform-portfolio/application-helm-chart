@@ -1,0 +1,246 @@
+suite: Atlas roles migrations and credential access
+
+templates:
+  - templates/atlas.yaml
+
+release:
+  name: poc
+
+tests:
+  - it: renders no Atlas resources by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: scopes role reconciliation to the explicit platform ownership list
+    values:
+      - fixtures/postgres.yaml
+    documentSelector:
+      path: kind
+      value: AtlasSchema
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: atlas-system
+
+      - equal:
+          path: spec.urlFrom.secretKeyRef
+          value: {name: atlas-postgres, key: url}
+
+      - equal:
+          path: spec.policy.lint
+          value: {review: ERROR, destructive: {error: true}}
+
+      - matchRegex:
+          path: spec.config
+          pattern: 'include = \[\s+"preview_pr42_owner\[type=role\|user\]",\s+"preview_pr42_migrator\[type=role\|user\]",\s+"preview_pr42_app\[type=role\|user\]",\s+\]'
+
+      - matchRegex:
+          path: spec.config
+          pattern: 'schemas\s+= false\s+objects\s+= false\s+roles\s+= true\s+permissions\s+= false'
+
+      - matchRegex:
+          path: spec.schema.hcl
+          pattern: 'member_of = \[\s+role.preview_pr42_owner,'
+
+      - equal:
+          path: spec.vars[0].valueFrom.secretKeyRef
+          value: {name: preview-pr42-runtime, key: password}
+
+      - notExists:
+          path: metadata.annotations
+
+  - it: pins multiple registry migrations and blocks implicit schema downgrades
+    values:
+      - fixtures/postgres.yaml
+    documentSelector:
+      path: kind
+      value: AtlasMigration
+      matchMany: true
+    asserts:
+      - hasDocuments:
+          count: 2
+          filterAware: true
+
+      - equal:
+          path: spec.protectedFlows.migrateDown.allow
+          value: false
+
+      - equal:
+          path: spec.cloud.tokenFrom.secretKeyRef
+          value: {name: atlas-token-secret, key: ATLAS_TOKEN}
+
+      - equal:
+          path: spec.credentials.parameters
+          value:
+            sslmode: verify-full
+            sslrootcert: /etc/atlas-postgres/ca.crt
+
+      - equal:
+          path: spec.credentials.host
+          value: platform-rw.postgres.svc.cluster.local
+
+      - equal:
+          path: spec.credentials.passwordFrom.secretKeyRef
+          value: {name: preview-pr42-migrator, key: password}
+
+      - equal:
+          path: spec.dir.remote.tag
+          value: commit-123
+        documentSelector:
+          path: spec.dir.remote.name
+          value: preview-poc
+
+  - it: grants the existing operator only named credential reads
+    values:
+      - fixtures/postgres.yaml
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - apiGroups: ['']
+              resources: [secrets]
+              resourceNames:
+                - atlas-postgres
+                - atlas-token-secret
+                - preview-pr42-migrator
+                - preview-pr42-runtime
+              verbs: [get]
+
+  - it: adds optional sync waves to each Atlas resource and its credential access
+    values:
+      - fixtures/postgres.yaml
+    set:
+      platform.syncWaves.atlasSchema: -20
+      platform.syncWaves.atlasMigration: 0
+      platform.syncWaves.atlasAccess: -30
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-20'
+        documentSelector: {path: kind, value: AtlasSchema}
+
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '0'
+        documentSelector: {path: kind, value: AtlasMigration, matchMany: true}
+
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-30'
+        documentSelector: {path: kind, value: RoleBinding}
+
+  - it: keeps a second preview role scope independent of the first
+    set:
+      namespace: preview-pr-43
+      postgres.roles:
+        preview_pr43_owner: {}
+      platform.atlas.roleScope: [preview_pr43_owner]
+      platform.atlas.rolePlanRepository: preview-roles
+    documentSelector: {path: kind, value: AtlasSchema}
+    asserts:
+      - matchRegex:
+          path: spec.config
+          pattern: '"preview_pr43_owner\[type=role\|user\]"'
+
+      - notMatchRegex:
+          path: spec.config
+          pattern: preview_pr42
+
+      - notExists:
+          path: spec.vars
+
+  - it: can retain an ownership scope with an empty desired role set for controlled cleanup
+    set:
+      namespace: preview-pr-42
+      platform.atlas.roleScope: [preview_pr42_owner]
+      platform.atlas.rolePlanRepository: preview-roles
+    documentSelector: {path: kind, value: AtlasSchema}
+    asserts:
+      - equal:
+          path: spec.schema.hcl
+          value: ''
+
+      - equal:
+          path: spec.policy.lint.destructive.error
+          value: true
+
+  - it: refuses role management without an explicit ownership scope
+    set:
+      namespace: example
+      postgres.roles:
+        app_owner: {}
+    asserts:
+      - failedTemplate:
+          errorPattern: roleScope must explicitly list
+
+  - it: refuses a role outside the declared scope
+    set:
+      namespace: example
+      postgres.roles:
+        other_app_owner: {}
+      platform.atlas.roleScope: [app_owner]
+      platform.atlas.rolePlanRepository: preview-roles
+    asserts:
+      - failedTemplate:
+          errorPattern: outside platform.atlas.roleScope
+
+  - it: refuses membership of an unmanaged privileged role
+    values:
+      - fixtures/postgres.yaml
+    set:
+      postgres.roles.preview_pr42_app.memberOf: [pg_write_all_data]
+    asserts:
+      - failedTemplate:
+          errorPattern: unmanaged membership
+
+  - it: rejects login roles without a password Secret reference
+    set:
+      namespace: example
+      postgres.roles:
+        app_user: {login: true}
+      platform.atlas.roleScope: [app_user]
+      platform.atlas.rolePlanRepository: preview-roles
+    asserts:
+      - failedTemplate:
+          errorPattern: needs passwordSecret
+
+  - it: rejects floating migration tags
+    set:
+      namespace: example
+      postgres.migrations.api:
+        database: api
+        role: app_migrator
+        repository: example
+        tag: latest
+    asserts:
+      - failedTemplate:
+          errorPattern: tag
+
+  - it: refuses a migration that references an undeclared database
+    values:
+      - fixtures/postgres.yaml
+    set:
+      postgres.migrations.api.database: missing
+    asserts:
+      - failedTemplate:
+          errorPattern: undefined database missing
+
+  - it: accepts a dedicated dev database Secret without broadening Secret access
+    values:
+      - fixtures/postgres.yaml
+    set:
+      postgres.migrations.api.devURLSecret: preview-pr42-dev
+    asserts:
+      - equal:
+          path: spec.devURLFrom.secretKeyRef
+          value: {name: preview-pr42-dev, key: url}
+        documentSelector: {path: spec.dir.remote.name, value: preview-poc}
+
+      - contains:
+          path: rules[0].resourceNames
+          content: preview-pr42-dev
+        documentSelector: {path: kind, value: Role}

@@ -1,0 +1,181 @@
+{{- $atlas := .Values.platform.atlas }}
+{{- $scope := $atlas.roleScope }}
+{{- $hasLogins := false }}
+{{- range $role := .Values.postgres.roles }}
+{{- if $role.login }}{{- $hasLogins = true }}{{- end }}
+{{- end }}
+{{- if and .Values.postgres.roles (not $scope) }}
+{{- fail "platform.atlas.roleScope must explicitly list the roles this release owns" }}
+{{- end }}
+
+{{- if $scope }}
+apiVersion: db.atlasgo.io/v1alpha1
+kind: AtlasSchema
+metadata:
+  name: {{ include "application.resourceName" (dict "root" . "name" "roles") }}
+  namespace: {{ $atlas.namespace | quote }}
+  {{- if hasKey .Values.platform.syncWaves "atlasSchema" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.platform.syncWaves.atlasSchema | quote }}
+  {{- end }}
+spec:
+  envName: {{ $atlas.roleEnvironment | quote }}
+  urlFrom:
+    secretKeyRef: {name: {{ $atlas.roleConnectionSecret | quote }}, key: {{ $atlas.connectionKey | quote }}}
+  cloud:
+    repo: {{ required "platform.atlas.rolePlanRepository is required for role plan reviews" $atlas.rolePlanRepository | quote }}
+    tokenFrom:
+      secretKeyRef: {name: {{ $atlas.cloudTokenSecret | quote }}, key: {{ $atlas.cloudTokenKey | quote }}}
+  policy:
+    lint:
+      review: {{ $atlas.roleReview }}
+      destructive: {error: {{ $atlas.blockDestructiveRoles }}}
+  config: |
+    env {{ $atlas.roleEnvironment | toJson }} {
+      include = [
+        {{- range $role := $scope }}
+        {{ printf "%s[type=role|user]" $role | toJson }},
+        {{- end }}
+      ]
+      schema {
+        src = "file://schema.hcl"
+        mode {
+          schemas     = false
+          objects     = false
+          roles       = true
+          permissions = false
+          sensitive   = ALLOW
+        }
+      }
+    }
+  schema:
+    hcl: |
+      {{- range $name, $role := .Values.postgres.roles }}
+      {{- if not (has $name $scope) }}
+      {{- fail (printf "role %s is outside platform.atlas.roleScope" $name) }}
+      {{- end }}
+      {{- if $role.login }}
+      variable {{ printf "password_%s" $name | toJson }} {
+        type = string
+      }
+      user {{ $name | toJson }} {
+        password = var.password_{{ $name }}
+      {{- else }}
+      role {{ $name | toJson }} {
+      {{- end }}
+        superuser   = false
+        create_db   = false
+        create_role = false
+        {{- if $role.memberOf }}
+        member_of = [
+          {{- range $parent := $role.memberOf }}
+          {{- if not (hasKey $.Values.postgres.roles $parent) }}
+          {{- fail (printf "role %s references unmanaged membership %s" $name $parent) }}
+          {{- end }}
+          {{ if (index $.Values.postgres.roles $parent).login }}user{{ else }}role{{ end }}.{{ $parent }},
+          {{- end }}
+        ]
+        {{- end }}
+      }
+      {{- end }}
+  {{- if $hasLogins }}
+  vars:
+    {{- range $name, $role := .Values.postgres.roles }}
+    {{- if $role.login }}
+    - key: {{ printf "password_%s" $name }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ required (printf "login role %s needs passwordSecret" $name) $role.passwordSecret | quote }}
+          key: {{ $atlas.passwordKey | quote }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+---
+{{- end }}
+
+{{- range $name, $migration := .Values.postgres.migrations }}
+{{- $database := required (printf "migration %s references undefined database %s" $name $migration.database) (index $.Values.postgres.databases $migration.database) }}
+{{- $role := required (printf "migration %s references undefined role %s" $name $migration.role) (index $.Values.postgres.roles $migration.role) }}
+{{- if not $role.login }}
+{{- fail (printf "migration %s requires a login role" $name) }}
+{{- end }}
+apiVersion: db.atlasgo.io/v1alpha1
+kind: AtlasMigration
+metadata:
+  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
+  namespace: {{ $atlas.namespace | quote }}
+  {{- if hasKey $.Values.platform.syncWaves "atlasMigration" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $.Values.platform.syncWaves.atlasMigration | quote }}
+  {{- end }}
+spec:
+  credentials:
+    {{- toYaml $atlas.connection | nindent 4 }}
+    database: {{ $database.name | quote }}
+    user: {{ $migration.role | quote }}
+    passwordFrom:
+      secretKeyRef:
+        name: {{ $role.passwordSecret | quote }}
+        key: {{ $atlas.passwordKey | quote }}
+  cloud:
+    tokenFrom:
+      secretKeyRef: {name: {{ $atlas.cloudTokenSecret | quote }}, key: {{ $atlas.cloudTokenKey | quote }}}
+  dir:
+    remote:
+      name: {{ $migration.repository | quote }}
+      tag: {{ $migration.tag | quote }}
+  {{- if $migration.devURLSecret }}
+  devURLFrom:
+    secretKeyRef: {name: {{ $migration.devURLSecret | quote }}, key: {{ $atlas.connectionKey | quote }}}
+  {{- end }}
+  protectedFlows:
+    migrateDown:
+      {{- toYaml $atlas.migrateDown | nindent 6 }}
+---
+{{- end }}
+
+{{- if or $scope .Values.postgres.migrations }}
+{{- $secrets := list $atlas.cloudTokenSecret }}
+{{- if $scope }}
+{{- $secrets = append $secrets $atlas.roleConnectionSecret }}
+{{- range $role := .Values.postgres.roles }}
+{{- if $role.login }}{{- $secrets = append $secrets $role.passwordSecret }}{{- end }}
+{{- end }}
+{{- end }}
+{{- range $migration := .Values.postgres.migrations }}
+{{- if $migration.devURLSecret }}{{- $secrets = append $secrets $migration.devURLSecret }}{{- end }}
+{{- end }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "application.resourceName" (dict "root" . "name" "atlas-secrets") }}
+  namespace: {{ $atlas.namespace | quote }}
+  {{- if hasKey .Values.platform.syncWaves "atlasAccess" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.platform.syncWaves.atlasAccess | quote }}
+  {{- end }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: {{ uniq $secrets | sortAlpha | toJson }}
+    verbs: [get]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "application.resourceName" (dict "root" . "name" "atlas-secrets") }}
+  namespace: {{ $atlas.namespace | quote }}
+  {{- if hasKey .Values.platform.syncWaves "atlasAccess" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.platform.syncWaves.atlasAccess | quote }}
+  {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "application.resourceName" (dict "root" . "name" "atlas-secrets") }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $atlas.serviceAccount | quote }}
+    namespace: {{ $atlas.namespace | quote }}
+{{- end }}

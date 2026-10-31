@@ -3,10 +3,45 @@ namespace: ""
 hosts: {}
 components: {}
 
+# Platform environment inputs; empty maps render no database resources.
+postgres:
+  databases: {}
+  roles: {}
+  migrations: {}
+
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
   # Optional Argo CD sync wave per resource kind; omit a key for no annotation.
   syncWaves: {}
+
+  postgres:
+    namespace: postgres
+    cluster: platform
+    databaseReclaimPolicy: retain
+
+  atlas:
+    namespace: atlas-system
+    serviceAccount: atlas-operator
+    roleEnvironment: roles
+    roleScope: []
+    rolePlanRepository: ""
+    roleConnectionSecret: atlas-postgres
+    connectionKey: url
+    passwordKey: password
+    cloudTokenSecret: atlas-token-secret
+    cloudTokenKey: ATLAS_TOKEN
+    roleReview: ERROR
+    blockDestructiveRoles: true
+    migrateDown:
+      allow: false
+
+    connection:
+      scheme: postgres
+      host: platform-rw.postgres.svc.cluster.local
+      port: 5432
+      parameters:
+        sslmode: verify-full
+        sslrootcert: /etc/atlas-postgres/ca.crt
 
   # Platform-owned Azure settings. Applications without Azure access leave these empty.
   # Each identity creates a new UAI by default; create: false references a shared UAI.

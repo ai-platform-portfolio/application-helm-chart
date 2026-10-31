@@ -177,3 +177,142 @@ separated by blank lines. The suites check rendered resources and invalid inputs
 without a cluster. This keeps assertions in the Helm ecosystem without a separate language
 or test runner. Native `helm test` exercises an installed release through test pods;
 those integration checks belong to the later deployment validation work.
+
+## Optional PostgreSQL and Atlas resources
+
+### Why deploy through the Atlas operator?
+
+This platform uses Argo CD for application delivery. The Atlas operator exposes
+database deployment status as Kubernetes conditions, so Argo can wait for the
+required schema before starting application workloads. It also provides native
+resource interfaces for versioned/declarative deployments, scheduled drift
+checks and security scans, with the appropriate Atlas configuration and licence.
+These features still need configuration and acceptance tests; installing the
+operator alone does not enable them.
+
+The alternative considered was the official Atlas Terraform provider through
+Atlantis. It supports schema/migration deployments, reviews and protected down
+migrations, and remains a valid choice for a Terraform-oriented platform. For
+this portfolio, it would add Terraform state for schemas and require explicit
+coordination between Atlantis completion and Argo application delivery. Its
+resource deletion behavior also differs: `atlas_schema` invokes schema cleaning,
+while `atlas_migration` deletion performs no database cleanup. This decision is
+about the fit with the existing delivery system, not a claim that the provider
+is immature or incapable.
+
+The tradeoff is that the operator needs cluster access, credential RBAC, health
+checks and lifecycle configuration. CI still plans/lints/tests changes; CNPG
+still handles database provisioning and backup/recovery. Deleting an Atlas CR
+does not delete its SQL objects, so preview cleanup remains explicit.
+
+The intended self-service interface is native Atlas HCL in application source,
+reusable policies/definitions alongside the existing Terraform module library,
+CI publishing reviewed revisions, and a small Helm reference selecting the
+revision to deploy. Sharing a library repository does not require Terraform to
+execute Atlas. This authoring layout is an agreed direction, not implemented
+behavior: the current role template still generates HCL from values and needs
+revision before that interface is complete. No schema or role should be
+reconciled by both Terraform and the operator.
+
+Sources: [Atlas operator](https://atlasgo.io/integrations/kubernetes),
+[Terraform provider](https://atlasgo.io/integrations/terraform),
+[schema resource lifecycle](https://github.com/ariga/terraform-provider-atlas/blob/v0.10.3/internal/provider/atlas_schema_resource.go),
+[migration resource lifecycle](https://github.com/ariga/terraform-provider-atlas/blob/v0.10.3/internal/provider/atlas_migration_resource.go).
+
+### Current chart inputs
+
+The `postgres` maps describe databases, roles and migration deployments. They
+are empty by default. CNPG `Database` resources live in `platform.postgres.namespace`;
+Atlas resources and credential-read RBAC live in `platform.atlas.namespace`.
+Related Atlas resources share `templates/atlas.yaml` and `tests/atlas_test.yaml`;
+CNPG databases use `postgres.yaml` and `postgres_test.yaml`.
+
+```yaml
+postgres:
+  databases:
+    api:
+      name: preview_pr42
+      owner: preview_pr42_owner
+      reclaimPolicy: delete
+
+  roles:
+    preview_pr42_owner: {}
+    preview_pr42_migrator:
+      login: true
+      passwordSecret: preview-pr42-migrator
+      memberOf: [preview_pr42_owner]
+    preview_pr42_app:
+      login: true
+      passwordSecret: preview-pr42-runtime
+
+  migrations:
+    api:
+      database: api
+      role: preview_pr42_migrator
+      repository: preview-poc
+      tag: commit-sha
+```
+
+These are platform-controlled environment inputs. Application developers keep
+migration content in the application repository; the PR delivery mechanism will
+supply names, Secret references and registry revisions. No passwords belong in
+values. Required central password Secrets must exist before these resources
+reconcile; this chart does not generate or copy application credentials.
+
+The platform separately sets `platform.atlas.roleScope` to the exact SQL role
+names this release owns, and `rolePlanRepository` to an Atlas plan repository.
+Role inspection uses that explicit include list with schemas, objects and
+permissions disabled. Login passwords use Secret-backed Atlas variables.
+Membership is restricted to other roles declared by this release, and role
+creation cannot request superuser, CREATEROLE or CREATEDB. The bootstrap role
+manager and existing service roles must stay outside the scope. This is a
+trusted platform configuration boundary, not database-enforced tenant isolation.
+Never claim the same database or role from multiple releases.
+
+AtlasSchema owns the declared roles; AtlasMigration owns application schema and
+its GRANT/REVOKE statements. The chart does not invent table privileges for the
+runtime role or let two resources reconcile the same grants. CNPG owns database
+creation and its database owner; object ownership follows the migration login or
+explicit reviewed migration SQL. Existing resources need a deliberate ownership
+transfer before adoption.
+
+Migration connections are assembled from the selected database and login role,
+with the direct PostgreSQL host, port and verified TLS parameters in
+`platform.atlas.connection`. The GitOps prerequisites supply the CA mount and
+Atlas bot token. The generated Role permits only `get` on named Secrets used by
+this release. An optional migration `devURLSecret` supplies a dedicated empty dev
+database URL; never point it at the target database. Before deployment, verify
+that any operator-created dev database uses the target PostgreSQL major version,
+satisfies Pod Security and fits the cluster, or provide a compatible dev URL.
+
+Sync waves remain absent by default. A platform environment can use:
+
+```yaml
+platform:
+  atlas:
+    roleScope: [preview_pr42_owner, preview_pr42_migrator, preview_pr42_app]
+    rolePlanRepository: preview-roles
+  syncWaves:
+    namespace: -40
+    atlasAccess: -30
+    atlasSchema: -20
+    database: -10
+    atlasMigration: 0
+    deployment: 10
+    rollout: 10
+```
+
+The Argo current-generation health checks from GitOps are prerequisites for this
+ordering. Application credential delivery, PostgreSQL HBA rules for the new
+logins, migration publication and live two-preview isolation checks are still
+integration work. Rendering tests do not prove PostgreSQL privileges or Atlas
+licence availability.
+
+Database deletion defaults to `retain`; disposable previews explicitly choose
+`delete`. Schema downgrades are blocked by default in `platform.atlas.migrateDown`.
+Atlas role plans block destructive changes and use the configured review policy.
+Removing a role from `roleScope` relinquishes management; it does not drop the
+role. Keep the ownership scope while reconciling an empty desired role set for
+an explicitly approved cleanup, after dropping its databases/dependencies.
+Deleting Atlas CRs alone leaves SQL objects behind. PR-close orchestration and
+backup/recovery drills remain separate implementation steps.

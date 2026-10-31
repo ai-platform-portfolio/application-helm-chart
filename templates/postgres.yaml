@@ -1,0 +1,22 @@
+{{- $names := dict }}
+{{- range $name, $database := .Values.postgres.databases }}
+{{- if hasKey $names $database.name }}
+{{- fail (printf "database %s is declared more than once" $database.name) }}
+{{- end }}
+{{- $_ := set $names $database.name true }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
+  namespace: {{ $.Values.platform.postgres.namespace | quote }}
+  {{- if hasKey $.Values.platform.syncWaves "database" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $.Values.platform.syncWaves.database | quote }}
+  {{- end }}
+spec:
+  cluster: {name: {{ $.Values.platform.postgres.cluster | quote }}}
+  name: {{ $database.name | quote }}
+  owner: {{ $database.owner | quote }}
+  databaseReclaimPolicy: {{ default $.Values.platform.postgres.databaseReclaimPolicy $database.reclaimPolicy }}
+---
+{{- end }}

@@ -4,7 +4,7 @@ app.kubernetes.io/component: {{ .name | quote }}
 app.kubernetes.io/managed-by: {{ .root.Release.Service | quote }}
 {{- end -}}
 
-{{- define "application.azureResourceName" -}}
+{{- define "application.resourceName" -}}
 {{- $base := printf "%s-%s-%s" .root.Values.namespace .root.Release.Name .name -}}
 {{- printf "%s-%s" (trimSuffix "-" (trunc 37 $base)) (trunc 12 (sha256sum $base)) -}}
 {{- end -}}

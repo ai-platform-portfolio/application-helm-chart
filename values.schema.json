@@ -29,9 +29,27 @@
             "userAssignedIdentity": { "type": "integer" },
             "federatedIdentityCredential": { "type": "integer" },
             "roleAssignment": { "type": "integer" },
-            "storageContainer": { "type": "integer" }
+            "storageContainer": { "type": "integer" },
+            "database": { "type": "integer" },
+            "atlasSchema": { "type": "integer" },
+            "atlasMigration": { "type": "integer" },
+            "atlasAccess": { "type": "integer" }
           },
           "additionalProperties": false
+        },
+        "atlas": {
+          "type": "object",
+          "properties": {
+            "roleScope": { "type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 63} },
+            "roleReview": { "enum": ["ERROR", "WARNING", "ALWAYS"] },
+            "blockDestructiveRoles": { "type": "boolean" }
+          }
+        },
+        "postgres": {
+          "type": "object",
+          "properties": {
+            "databaseReclaimPolicy": { "enum": ["retain", "delete"] }
+          }
         },
         "azure": {
           "type": "object",
@@ -90,6 +108,105 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "databases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "maxLength": 63
+              },
+              "owner": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "maxLength": 63
+              },
+              "reclaimPolicy": {
+                "enum": [
+                  "retain",
+                  "delete"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "owner"
+            ]
+          }
+        },
+        "roles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "login": {
+                "type": "boolean"
+              },
+              "passwordSecret": {
+                "type": "string",
+                "minLength": 1
+              },
+              "memberOf": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "maxLength": 63
+                },
+                "uniqueItems": true
+              }
+            }
+          },
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "maxLength": 63
+          }
+        },
+        "migrations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "database": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": { "type": "string", "minLength": 1 },
+              "devURLSecret": { "type": "string", "minLength": 1 },
+              "repository": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tag": {
+                "type": "string",
+                "minLength": 1,
+                "not": {
+                  "enum": [
+                    "latest"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "database",
+              "role",
+              "repository",
+              "tag"
+            ]
           }
         }
       }
