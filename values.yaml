@@ -21,7 +21,7 @@ platform:
       tlsMode: Terminate
       allowedRoutesFrom: Same
     httpRedirect:
-      enabled: false
+      enabled: true
       listenerName: http
       scheme: https
       statusCode: 301
