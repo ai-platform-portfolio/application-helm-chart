@@ -12,6 +12,15 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  # Native ESO and credential-reader resources; keys are names, specs stay native.
+  credentials:
+    passwords: {}
+    externalSecrets: {}
+    secretStores: {}
+    serviceAccounts: {}
+    roles: {}
+    roleBindings: {}
+
   # Optional Argo CD sync wave per resource kind; omit a key for no annotation.
   syncWaves: {}
 

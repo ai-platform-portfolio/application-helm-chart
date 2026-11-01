@@ -328,6 +328,37 @@ logins, migration publication and live two-preview isolation checks are still
 integration work. Rendering tests do not prove PostgreSQL privileges or Atlas
 licence availability.
 
+### Credential delivery
+
+`templates/credentials/` renders reusable ESO and reader access resources from
+named maps in `platform.credentials`: `passwords`, `externalSecrets`, `secretStores`,
+`serviceAccounts`, `roles` and `roleBindings`. Empty maps render nothing. Map keys
+default resource names, and namespace defaults to the application namespace.
+Optional native `metadata` overrides names/namespaces and supplies labels or waves.
+Specs, rules, roleRef and subjects retain their native Kubernetes shape; ESO
+`{{ ... }}` templates are passed through without Helm `tpl` evaluation.
+
+```yaml
+platform:
+  credentials:
+    externalSecrets:
+      runtime-database:
+        metadata:
+          annotations: {argocd.argoproj.io/sync-wave: "-30"}
+        spec:
+          secretStoreRef: {name: app-vault, kind: SecretStore}
+          target: {name: runtime-database}
+          data:
+            - secretKey: url
+              remoteRef: {key: app-database-url}
+```
+
+The platform caller owns trusted credential policy and name references; application
+pods receive only the selected Secret keys. No application names or provider
+settings are embedded in these templates. Reader service accounts default to no
+mounted token. Source credentials, copies and reader grants remain separate native
+objects so their ownership and permissions stay visible in values.
+
 ### Versioned database access
 
 [database-access.yaml](examples/database-access.yaml) adds a small inline access

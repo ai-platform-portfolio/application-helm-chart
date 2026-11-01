@@ -1,4 +1,8 @@
-{{- if or .Values.components .Values.hosts .Values.platform.azure.identities .Values.platform.azure.storageContainers .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations .Values.platform.atlas.roleScope }}
+{{- $credentials := false }}
+{{- range .Values.platform.credentials }}
+{{- if . }}{{- $credentials = true }}{{- end }}
+{{- end }}
+{{- if or $credentials .Values.components .Values.hosts .Values.platform.azure.identities .Values.platform.azure.storageContainers .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations .Values.platform.atlas.roleScope }}
 apiVersion: v1
 kind: Namespace
 metadata:
