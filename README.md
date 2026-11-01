@@ -141,6 +141,11 @@ must evaluate the installed current-generation Atlas health check for every hook
 before releasing the Application finalizer; failed hooks use native retry. No
 independent SQL script or second database role owner is added.
 
+All cleanup resources declare `argocd.argoproj.io/hook-delete-policy: HookSucceeded`.
+Argo removes them after all PostDelete hooks are healthy, keeping the supporting
+RBAC available until Atlas and the Secret cleanup Job finish. Omitting this policy
+defaults to `BeforeHookCreation`, which leaves successful deletion hooks behind.
+
 Atlas migration-state Secrets have native owner references; ESO copies and the
 application namespace also use Kubernetes garbage collection. The source runtime
 client Secrets currently lack certificate owner references. A small PostDelete
