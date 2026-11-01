@@ -111,6 +111,15 @@ acceptance. Existing database/role ownership is not adopted.
 
 ### Disposable cleanup — platform operator
 
+> [!WARNING]
+> Unpatched Argo CD 3.5.5/3.5.6 can release Application finalizers before
+> PreDelete/PostDelete hooks finish when its resource cache is behind the API.
+> Live failure injection reproduced this and left SQL roles behind. Unattended
+> cleanup requires the controller fix in [Argo PR29687](https://github.com/argoproj/argo-cd/pull/29687)
+> for [issue29100](https://github.com/argoproj/argo-cd/issues/29100), or a reviewed
+> backport, followed by successful live failed-hook/retry acceptance. This is a
+> platform-controller prerequisite; application values cannot fix it.
+
 For an exclusive application namespace using minimal `databases` intent, set
 `platform.lifecycle.cleanup.enabled=true` at registration. The registration template
 forwards the cleanup settings into its child render. Every database must explicitly
@@ -127,9 +136,9 @@ checked at the installed Argo v3.5.5. Keep the chart's dependency wave ordering.
 Deleting an AtlasSchema leaves SQL roles behind. After ordinary cascading deletion
 finishes, a **PostDelete AtlasSchema** requests an empty role state with the same
 exact include scope, shared connection, cloud repository and lint/review policy.
-It uses the same spec helper as normal role management. Argo's installed Atlas
-health check waits for current-generation Ready; failed hooks are recreated by
-Argo. The Application's deletion finalizer remains until hooks complete. No
+It uses the same spec helper as normal role management. The corrected controller
+must evaluate the installed current-generation Atlas health check for every hook
+before releasing the Application finalizer; failed hooks use native retry. No
 independent SQL script or second database role owner is added.
 
 Atlas migration-state Secrets have native owner references; ESO copies and the
