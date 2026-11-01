@@ -11,6 +11,13 @@ tests:
     asserts:
       - hasDocuments: {count: 0}
 
+  - it: removes every cleanup hook only after aggregate success
+    set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
+    template: templates/lifecycle/cleanup.yaml
+    asserts:
+      - hasDocuments: {count: 7}
+      - equal: {path: 'metadata.annotations["argocd.argoproj.io/hook-delete-policy"]', value: HookSucceeded}
+
   - it: refuses the safe retained-database default
     set: {platform.lifecycle.cleanup.enabled: true}
     asserts:
