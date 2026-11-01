@@ -274,6 +274,11 @@
           },
           "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "healthPath": { "type": "string", "pattern": "^/" },
+          "env": {
+            "type": "array",
+            "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "minLength": 1 } } }
+          },
+          "readinessProbe": { "type": "object" },
           "replicas": { "type": "integer", "minimum": 1 },
           "resources": { "type": "object" },
           "identity": { "type": "string", "minLength": 1 },

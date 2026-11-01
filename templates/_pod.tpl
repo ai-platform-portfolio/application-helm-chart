@@ -1,6 +1,7 @@
 {{- define "application.podTemplate" -}}
 {{- $readiness := deepCopy .root.Values.platform.probes.readiness -}}
 {{- $_ := set $readiness.httpGet "path" .component.healthPath -}}
+{{- $readiness = mergeOverwrite $readiness (default dict .component.readinessProbe) -}}
 {{- $liveness := deepCopy .root.Values.platform.probes.liveness -}}
 {{- $_ := set $liveness.httpGet "path" .component.healthPath -}}
 {{- $identity := default "" .component.identity -}}
@@ -48,6 +49,10 @@ spec:
     - name: {{ .name }}
       image: {{ .component.image | quote }}
       imagePullPolicy: {{ .root.Values.platform.pod.imagePullPolicy }}
+      {{- with .component.env }}
+      env:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       ports:
         - name: {{ .root.Values.platform.httpPortName }}
           containerPort: {{ .component.port }}
