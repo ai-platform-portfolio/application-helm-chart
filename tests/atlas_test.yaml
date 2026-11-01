@@ -244,3 +244,123 @@ tests:
           path: rules[0].resourceNames
           content: preview-pr42-dev
         documentSelector: {path: kind, value: Role}
+
+  - it: renders native inline role templates with private history and an earlier wave
+    values: [../examples/database-access.yaml]
+    documentSelector: {path: spec.revisionsSchema, value: atlas_access_revisions}
+    set:
+      platform.atlas.migrateDown: {allow: true, autoApprove: true}
+      platform.syncWaves.atlasMigration: 4
+    asserts:
+      - equal:
+          path: spec.credentials.parameters.search_path
+          value: public
+      - equal:
+          path: spec.credentials.parameters.sslmode
+          value: verify-full
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '-5'
+      - matchRegex:
+          path: spec.config
+          pattern: '"runtime" = "preview_pr42_app"'
+      - matchRegex:
+          path: spec.config
+          pattern: 'dir = data.template_dir.migrations.url'
+      - matchRegex:
+          path: spec.dir.local["1_access.sql"]
+          pattern: 'ALTER DEFAULT PRIVILEGES IN SCHEMA public'
+      - notExists:
+          path: spec.dir.local["atlas.sum"]
+      - notExists:
+          path: spec.dir.remote
+      - equal:
+          path: spec.protectedFlows.migrateDown
+          value: {allow: false}
+
+  - it: keeps the application artifact separate from the inline access stream
+    values: [../examples/database-access.yaml]
+    documentSelector: {path: spec.revisionsSchema, value: atlas_schema_revisions}
+    asserts:
+      - equal:
+          path: spec.credentials.parameters.search_path
+          value: public
+      - equal:
+          path: spec.dir.remote.name
+          value: preview-environments
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: '0'
+      - notExists:
+          path: spec.config
+      - notExists:
+          path: spec.dir.local
+
+  - it: rejects two streams sharing a database history
+    values: [../examples/database-access.yaml]
+    set:
+      postgres.migrations.api.revisionsSchema: atlas_access_revisions
+    asserts:
+      - failedTemplate:
+          errorPattern: shares database/history
+
+  - it: rejects application-schema history exposure
+    values: [../examples/database-access.yaml]
+    set:
+      postgres.migrations.api.revisionsSchema: public
+    asserts:
+      - failedTemplate:
+          errorPattern: must keep revisionsSchema separate
+
+  - it: requires private history for schema-scoped registry migrations
+    values: [fixtures/postgres.yaml]
+    set:
+      postgres.migrations.api.schema: public
+    asserts:
+      - failedTemplate:
+          errorPattern: needs revisionsSchema
+
+  - it: rejects templates referencing undeclared roles
+    values: [../examples/database-access.yaml]
+    set:
+      postgres.migrations.access.roleVars.runtime: postgres
+    asserts:
+      - failedTemplate:
+          errorPattern: references unmanaged role postgres
+
+  - it: rejects mixed inline and registry sources
+    values: [../examples/database-access.yaml]
+    set:
+      postgres.migrations.access.repository: other
+      postgres.migrations.access.tag: commit-sha
+    asserts:
+      - failedTemplate:
+          errorPattern: oneOf
+
+  - it: rejects unsafe template identifiers
+    values: [../examples/database-access.yaml]
+    set:
+      postgres.migrations.access.roleVars.runtime: 'bad"; GRANT ALL'
+    asserts:
+      - failedTemplate:
+          errorPattern: roleVars
+
+  - it: grants inline directory state access without credential updates or Secret discovery
+    values: [../examples/database-access.yaml]
+    documentSelector: {path: kind, value: Role}
+    asserts:
+      - lengthEqual:
+          path: rules
+          count: 3
+      - equal:
+          path: rules[0].verbs
+          value: [get]
+      - matchRegex:
+          path: rules[1].resourceNames[0]
+          pattern: '^io\.atlasgo\.db\.v1\.preview-pr-42-poc-access-[a-f0-9]{12}\.latest$'
+      - equal:
+          path: rules[1].verbs
+          value: [get, update]
+      - equal:
+          path: rules[2]
+          value: {apiGroups: [''], resources: [secrets], verbs: [create]}

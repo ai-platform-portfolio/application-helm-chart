@@ -93,24 +93,50 @@ spec:
 ---
 {{- end }}
 
+{{- $histories := dict }}
 {{- range $name, $migration := .Values.postgres.migrations }}
 {{- $database := required (printf "migration %s references undefined database %s" $name $migration.database) (index $.Values.postgres.databases $migration.database) }}
 {{- $role := required (printf "migration %s references undefined role %s" $name $migration.role) (index $.Values.postgres.roles $migration.role) }}
 {{- if not $role.login }}
 {{- fail (printf "migration %s requires a login role" $name) }}
 {{- end }}
+{{- if and $migration.schema (not $migration.revisionsSchema) }}
+{{- fail (printf "migration %s needs revisionsSchema to keep history outside the application schema" $name) }}
+{{- end }}
+{{- if and $migration.schema (eq $migration.schema $migration.revisionsSchema) }}
+{{- fail (printf "migration %s must keep revisionsSchema separate from schema" $name) }}
+{{- end }}
+{{- $history := printf "%s/%s" $database.name (default "atlas_schema_revisions" $migration.revisionsSchema) }}
+{{- if hasKey $histories $history }}
+{{- fail (printf "migration %s shares database/history %s with another migration" $name $history) }}
+{{- end }}
+{{- $_ := set $histories $history true }}
+{{- $wave := index $.Values.platform.syncWaves "atlasMigration" }}
+{{- if hasKey $migration "syncWave" }}{{- $wave = $migration.syncWave }}{{- end }}
+{{- range $key, $roleName := $migration.roleVars }}
+{{- if not (hasKey $.Values.postgres.roles $roleName) }}
+{{- fail (printf "migration %s variable %s references unmanaged role %s" $name $key $roleName) }}
+{{- end }}
+{{- end }}
 apiVersion: db.atlasgo.io/v1alpha1
 kind: AtlasMigration
 metadata:
   name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
   namespace: {{ $atlas.namespace | quote }}
-  {{- if hasKey $.Values.platform.syncWaves "atlasMigration" }}
+  {{- if or (hasKey $migration "syncWave") (hasKey $.Values.platform.syncWaves "atlasMigration") }}
   annotations:
-    argocd.argoproj.io/sync-wave: {{ $.Values.platform.syncWaves.atlasMigration | quote }}
+    argocd.argoproj.io/sync-wave: {{ $wave | quote }}
   {{- end }}
 spec:
+  {{- if $migration.revisionsSchema }}
+  revisionsSchema: {{ $migration.revisionsSchema | quote }}
+  {{- end }}
   credentials:
-    {{- toYaml $atlas.connection | nindent 4 }}
+    {{- $connection := deepCopy $atlas.connection }}
+    {{- if $migration.schema }}
+    {{- $_ := set $connection "parameters" (mergeOverwrite (dict) (default (dict) $connection.parameters) (dict "search_path" $migration.schema)) }}
+    {{- end }}
+    {{- toYaml $connection | nindent 4 }}
     database: {{ $database.name | quote }}
     user: {{ $migration.role | quote }}
     passwordFrom:
@@ -120,30 +146,59 @@ spec:
   cloud:
     tokenFrom:
       secretKeyRef: {name: {{ $atlas.cloudTokenSecret | quote }}, key: {{ $atlas.cloudTokenKey | quote }}}
+  {{- if $migration.local }}
+  envName: migration
+  config: |
+    data "template_dir" "migrations" {
+      path = "migrations"
+      vars = {
+        {{- range $key, $roleName := $migration.roleVars }}
+        {{ $key | toJson }} = {{ $roleName | toJson }}
+        {{- end }}
+      }
+    }
+    env "migration" {
+      migration {
+        dir = data.template_dir.migrations.url
+      }
+    }
+  dir:
+    local:
+      {{- toYaml $migration.local | nindent 6 }}
+  {{- else }}
   dir:
     remote:
       name: {{ $migration.repository | quote }}
       tag: {{ $migration.tag | quote }}
+  {{- end }}
   {{- if $migration.devURLSecret }}
   devURLFrom:
     secretKeyRef: {name: {{ $migration.devURLSecret | quote }}, key: {{ $atlas.connectionKey | quote }}}
   {{- end }}
   protectedFlows:
     migrateDown:
+      {{- if $migration.local }}
+      allow: false
+      {{- else }}
       {{- toYaml $atlas.migrateDown | nindent 6 }}
+      {{- end }}
 ---
 {{- end }}
 
 {{- if or $scope .Values.postgres.migrations }}
 {{- $secrets := list $atlas.cloudTokenSecret }}
+{{- $states := list }}
 {{- if $scope }}
 {{- $secrets = append $secrets $atlas.roleConnectionSecret }}
 {{- range $role := .Values.postgres.roles }}
 {{- if $role.login }}{{- $secrets = append $secrets $role.passwordSecret }}{{- end }}
 {{- end }}
 {{- end }}
-{{- range $migration := .Values.postgres.migrations }}
+{{- range $name, $migration := .Values.postgres.migrations }}
 {{- if $migration.devURLSecret }}{{- $secrets = append $secrets $migration.devURLSecret }}{{- end }}
+{{- if $migration.local }}
+{{- $states = append $states (printf "io.atlasgo.db.v1.%s.latest" (include "application.resourceName" (dict "root" $ "name" $name))) }}
+{{- end }}
 {{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -159,6 +214,19 @@ rules:
     resources: [secrets]
     resourceNames: {{ uniq $secrets | sortAlpha | toJson }}
     verbs: [get]
+  {{- if $states }}
+
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: {{ $states | sortAlpha | toJson }}
+    verbs: [get, update]
+
+  # Atlas creates its directory-state Secret even when downgrades are blocked.
+  # Kubernetes RBAC cannot constrain top-level create by resourceNames.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  {{- end }}
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1

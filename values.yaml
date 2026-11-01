@@ -7,6 +7,7 @@ components: {}
 postgres:
   databases: {}
   roles: {}
+  # Registry artifacts or small inline versioned SQL directories (see examples/database-access.yaml).
   migrations: {}
 
 # Platform defaults. Applications can override replicas or resources when needed.
