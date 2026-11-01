@@ -1,3 +1,4 @@
+{{- include "application.defaults" . -}}
 {{- $atlas := .Values.platform.atlas }}
 {{- $scope := $atlas.roleScope }}
 {{- $hasLogins := false }}

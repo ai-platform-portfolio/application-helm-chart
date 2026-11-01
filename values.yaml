@@ -1,3 +1,8 @@
+# Minimal developer intent. Advanced resource maps below remain available.
+name: ""
+hostname: ""
+databases: {}
+
 # Application values normally set only namespace, hosts and components.
 namespace: ""
 hosts: {}
@@ -12,6 +17,25 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  argocd:
+    enabled: false
+    namespace: argocd
+    project: default
+    repository: ""
+    revision: ""
+    chartRepository: https://github.com/ai-platform-portfolio/application-helm-chart.git
+    chartRevision: ""
+    valuesPath: deploy/values.yaml
+
+  # Native ESO and credential-reader resources; keys are names, specs stay native.
+  credentials:
+    passwords: {}
+    externalSecrets: {}
+    secretStores: {}
+    serviceAccounts: {}
+    roles: {}
+    roleBindings: {}
+
   # Optional Argo CD sync wave per resource kind; omit a key for no annotation.
   syncWaves: {}
 
@@ -19,9 +43,12 @@ platform:
     namespace: postgres
     cluster: platform
     databaseReclaimPolicy: retain
+    caSecret: ""
 
   atlas:
     namespace: atlas-system
+    sourceStore: atlas-postgres
+    sourceReader: atlas-secret-reader
     serviceAccount: atlas-operator
     roleEnvironment: roles
     roleScope: []
@@ -66,6 +93,7 @@ platform:
     gitops.platform/gateway: public
 
   gateway:
+    defaultComponent: web
     name: public
     namespace: envoy-gateway-system
     clusterIssuer: letsencrypt-azuredns

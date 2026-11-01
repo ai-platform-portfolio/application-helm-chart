@@ -2,6 +2,25 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "definitions": {
+    "credentialMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "namespace": {"type": "string", "minLength": 1},
+        "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
+        "labels": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "credentialSpec": {
+      "type": "object",
+      "required": ["spec"],
+      "additionalProperties": false,
+      "properties": {
+        "metadata": {"$ref": "#/definitions/credentialMetadata"},
+        "spec": {"type": "object"}
+      }
+    },
     "extraContainer": {
       "type": "object",
       "required": ["image"],
@@ -12,10 +31,81 @@
     }
   },
   "properties": {
+    "name": {"type": "string", "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63},
+    "hostname": {"type": "string", "pattern": "^[^*]*$"},
+    "databases": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$", "maxLength": 63},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 63},
+          "reclaimPolicy": {"enum": ["retain", "delete"]},
+          "migration": {
+            "type": "object", "required": ["repository", "tag"], "additionalProperties": false,
+            "properties": {
+              "repository": {"type": "string", "minLength": 1},
+              "tag": {"type": "string", "minLength": 1, "not": {"enum": ["latest"]}}
+            }
+          }
+        }
+      }
+    },
     "namespace": { "type": "string" },
     "platform": {
       "type": "object",
       "properties": {
+        "argocd": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "revision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"},
+            "chartRevision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"}
+          }
+        },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "passwords": {"type": "object", "additionalProperties": {"$ref": "#/definitions/credentialSpec"}},
+            "externalSecrets": {"type": "object", "additionalProperties": {"$ref": "#/definitions/credentialSpec"}},
+            "secretStores": {"type": "object", "additionalProperties": {"$ref": "#/definitions/credentialSpec"}},
+            "serviceAccounts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "metadata": {"$ref": "#/definitions/credentialMetadata"},
+                  "automountServiceAccountToken": {"type": "boolean"},
+                  "imagePullSecrets": {"type": "array", "items": {"type": "object"}},
+                  "secrets": {"type": "array", "items": {"type": "object"}}
+                }
+              }
+            },
+            "roles": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object", "required": ["rules"], "additionalProperties": false,
+                "properties": {
+                  "metadata": {"$ref": "#/definitions/credentialMetadata"},
+                  "rules": {"type": "array", "items": {"type": "object"}}
+                }
+              }
+            },
+            "roleBindings": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object", "required": ["roleRef", "subjects"], "additionalProperties": false,
+                "properties": {
+                  "metadata": {"$ref": "#/definitions/credentialMetadata"},
+                  "roleRef": {"type": "object"},
+                  "subjects": {"type": "array", "items": {"type": "object"}}
+                }
+              }
+            }
+          }
+        },
         "syncWaves": {
           "type": "object",
           "properties": {
@@ -265,7 +355,7 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["image", "port", "healthPath"],
+        "required": ["image", "port"],
         "properties": {
           "delivery": { "enum": ["deployment", "rollout"] },
           "image": {
@@ -274,6 +364,9 @@
           },
           "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "healthPath": { "type": "string", "pattern": "^/" },
+          "readinessPath": {"type": "string", "pattern": "^/"},
+          "database": {"type": "string", "minLength": 1},
+          "databaseEnv": {"type": "string", "minLength": 1},
           "env": {
             "type": "array",
             "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "minLength": 1 } } }

@@ -1,0 +1,87 @@
+suite: Minimal application intent and Argo registration
+
+release:
+  name: poc
+
+tests:
+  - it: derives database ownership and a restricted credential connection from minimal intent
+    values: [../examples/managed.yaml]
+    documentSelector: {path: "kind", value: Database}
+    asserts:
+      - matchRegex:
+          path: "spec.name"
+          pattern: '^app_sample_app_poc_messages_[a-f0-9]{12}$'
+      - matchRegex:
+          path: "spec.owner"
+          pattern: '^app_sample_app_poc_messages_[a-f0-9]{12}_owner$'
+      - equal: {path: "spec.databaseReclaimPolicy", value: retain}
+
+  - it: injects runtime connection and CA only into the database consumer
+    values: [../examples/managed.yaml]
+    documentSelector: {path: "metadata.name", value: api}
+    template: templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: "spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name"
+          pattern: '^sample-app-poc-messages-[a-f0-9]{12}-connection$'
+      - equal: {path: "spec.template.spec.containers[0].livenessProbe.httpGet.path", value: /healthz}
+      - equal: {path: "spec.template.spec.containers[0].readinessProbe.httpGet.path", value: /readyz}
+      - contains:
+          path: "spec.template.spec.volumes"
+          content:
+            name: database-ca
+          any: true
+
+  - it: keeps the frontend free of database credentials and creates its default route
+    values: [../examples/managed.yaml]
+    template: templates/deployment.yaml
+    documentSelector: {path: "metadata.name", value: web}
+    asserts:
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+      - equal: {path: "spec.template.spec.containers[0].readinessProbe.httpGet.path", value: /}
+      - equal: {path: "metadata.namespace", value: sample-app}
+
+  - it: isolates another app and supports multiple requested databases
+    values: [../examples/managed.yaml]
+    set:
+      name: second-app
+      databases.audit: {}
+    template: templates/atlas.yaml
+    documentSelector: {path: "kind", value: AtlasSchema}
+    asserts:
+      - matchRegex: {path: "spec.schema.hcl", pattern: 'app_second_app_poc_messages_[a-f0-9]+_owner'}
+      - matchRegex: {path: "spec.schema.hcl", pattern: 'app_second_app_poc_audit_[a-f0-9]+_owner'}
+      - notMatchRegex: {path: "spec.schema.hcl", pattern: app_sample_app}
+      - matchRegex: {path: "spec.config", pattern: 'permissions = false'}
+
+  - it: renders only an explicit bootstrap registration and disables child registration
+    values: [../examples/managed.yaml]
+    template: templates/argocd/application.yaml
+    set:
+      platform.argocd:
+        enabled: true
+        repository: https://example.test/team/app.git
+        revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        chartRevision: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    asserts:
+      - hasDocuments: {count: 1}
+      - equal: {path: "metadata.name", value: sample-app}
+      - equal: {path: "spec.destination.namespace", value: sample-app}
+      - equal: {path: "spec.sources[0].helm.valuesObject.platform.argocd.enabled", value: false}
+      - equal: {path: "spec.sources[1].ref", value: application}
+      - notExists: {path: "spec.sources[1].path"}
+      - notExists: {path: "spec.syncPolicy.automated"}
+      - notExists: {path: "metadata.finalizers"}
+
+  - it: rejects a consumer referencing an unrequested database
+    values: [../examples/managed.yaml]
+    set: {components.api.database: missing}
+    asserts:
+      - failedTemplate: {errorPattern: undefined database missing}
+
+  - it: rejects overlapping intent and explicit ownership maps
+    values: [../examples/managed.yaml]
+    set:
+      postgres.roles.unrelated: {}
+    asserts:
+      - failedTemplate: {errorPattern: 'Use databases intent or advanced postgres'}

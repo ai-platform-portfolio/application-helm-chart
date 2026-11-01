@@ -1,3 +1,4 @@
+{{- include "application.defaults" . -}}
 {{- range $name, $component := .Values.components }}
 {{- if eq (default "deployment" $component.delivery) "deployment" }}
 apiVersion: apps/v1

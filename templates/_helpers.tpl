@@ -35,3 +35,11 @@ app.kubernetes.io/managed-by: {{ .root.Release.Service | quote }}
 {{- end -}}
 {{- printf "/subscriptions/%s/resourceGroups/%s/providers/%s/%s" (required "platform.azure.subscriptionId is required" $azure.subscriptionId) (required (printf "platform.azure.%s.resourceGroup is required" .target) $resource.resourceGroup) $provider (required (printf "platform.azure.%s.name is required" .target) $resource.name) -}}
 {{- end -}}
+
+{{/* Credential map keys default names; native metadata can bind another name/namespace. */}}
+{{- define "application.credentialMetadata" -}}
+{{- $metadata := mergeOverwrite (dict "name" .name "namespace" .root.Values.namespace) (deepCopy (default dict .config.metadata)) -}}
+{{- $_ := required "credential metadata.namespace or application namespace is required" $metadata.namespace -}}
+metadata:
+  {{- toYaml $metadata | nindent 2 }}
+{{- end -}}

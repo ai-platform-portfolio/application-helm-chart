@@ -1,3 +1,4 @@
+{{- include "application.defaults" . -}}
 # ListenerSet
 {{- range $name, $host := .Values.hosts }}
 apiVersion: gateway.networking.k8s.io/v1
