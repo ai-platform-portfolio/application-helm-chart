@@ -33,7 +33,11 @@ spec:
   automountServiceAccountToken: false
   {{- end }}
   securityContext:
+    {{- if .component.database }}
+    {{- toYaml (mergeOverwrite (dict "fsGroup" 65532) (deepCopy .root.Values.platform.pod.securityContext)) | nindent 4 }}
+    {{- else }}
     {{- toYaml .root.Values.platform.pod.securityContext | nindent 4 }}
+    {{- end }}
 
   {{- if .component.initContainers }}
   initContainers:
@@ -72,7 +76,7 @@ spec:
       volumeMounts:
         {{- toYaml .root.Values.platform.pod.volumeMounts | nindent 8 }}
         {{- if .component.database }}
-        - {name: database-ca, mountPath: /etc/postgres, readOnly: true}
+        - {name: database-client, mountPath: /etc/postgres, readOnly: true}
         {{- end }}
 
     {{- range $name, $config := .component.sidecars }}
@@ -85,9 +89,12 @@ spec:
   volumes:
     {{- toYaml .root.Values.platform.pod.volumes | nindent 4 }}
     {{- if .component.database }}
-    - name: database-ca
+    - name: database-client
       secret:
         secretName: {{ printf "%s-connection" (include "application.resourceName" (dict "root" .root "name" .component.database)) | quote }}
-        items: [{key: ca.crt, path: ca.crt}]
+        # libpq accepts a root-owned key with group-read permission. fsGroup
+        # grants the non-root runtime access; no subPath pins an old certificate.
+        defaultMode: 0640
+        items: [{key: ca.crt, path: ca.crt}, {key: tls.crt, path: tls.crt}, {key: tls.key, path: tls.key}]
     {{- end }}
 {{- end -}}

@@ -1,9 +1,16 @@
 {{- include "application.defaults" . -}}
 {{- $atlas := .Values.platform.atlas }}
 {{- $scope := $atlas.roleScope }}
-{{- $hasLogins := false }}
-{{- range $role := .Values.postgres.roles }}
-{{- if $role.login }}{{- $hasLogins = true }}{{- end }}
+{{- $hasPasswords := false }}
+{{- range $name, $role := .Values.postgres.roles }}
+{{- if eq (default "password" $role.authentication) "certificate" }}
+{{- if or (not $role.login) $role.passwordSecret }}
+{{- fail (printf "certificate role %s requires login and must not set passwordSecret" $name) }}
+{{- end }}
+{{- else if $role.login }}
+{{- $hasPasswords = true }}
+{{- $_ := required (printf "login role %s needs passwordSecret" $name) $role.passwordSecret }}
+{{- end }}
 {{- end }}
 {{- if and .Values.postgres.roles (not $scope) }}
 {{- fail "platform.atlas.roleScope must explicitly list the roles this release owns" }}
@@ -56,11 +63,15 @@ spec:
       {{- fail (printf "role %s is outside platform.atlas.roleScope" $name) }}
       {{- end }}
       {{- if $role.login }}
+      {{- if ne (default "password" $role.authentication) "certificate" }}
       variable {{ printf "password_%s" $name | toJson }} {
         type = string
       }
+      {{- end }}
       user {{ $name | toJson }} {
+        {{- if ne (default "password" $role.authentication) "certificate" }}
         password = var.password_{{ $name }}
+        {{- end }}
       {{- else }}
       role {{ $name | toJson }} {
       {{- end }}
@@ -79,10 +90,10 @@ spec:
         {{- end }}
       }
       {{- end }}
-  {{- if $hasLogins }}
+  {{- if $hasPasswords }}
   vars:
     {{- range $name, $role := .Values.postgres.roles }}
-    {{- if $role.login }}
+    {{- if and $role.login (ne (default "password" $role.authentication) "certificate") }}
     - key: {{ printf "password_%s" $name }}
       valueFrom:
         secretKeyRef:
@@ -137,13 +148,20 @@ spec:
     {{- if $migration.schema }}
     {{- $_ := set $connection "parameters" (mergeOverwrite (dict) (default (dict) $connection.parameters) (dict "search_path" $migration.schema)) }}
     {{- end }}
+    {{- if eq (default "password" $role.authentication) "certificate" }}
+    {{- $_ := required "certificate migrations need platform.atlas.clientCertificate.sslcert" $atlas.clientCertificate.sslcert }}
+    {{- $_ := required "certificate migrations need platform.atlas.clientCertificate.sslkey" $atlas.clientCertificate.sslkey }}
+    {{- $_ := set $connection "parameters" (mergeOverwrite (default dict $connection.parameters) $atlas.clientCertificate) }}
+    {{- end }}
     {{- toYaml $connection | nindent 4 }}
     database: {{ $database.name | quote }}
     user: {{ $migration.role | quote }}
+    {{- if ne (default "password" $role.authentication) "certificate" }}
     passwordFrom:
       secretKeyRef:
         name: {{ $role.passwordSecret | quote }}
         key: {{ $atlas.passwordKey | quote }}
+    {{- end }}
   cloud:
     tokenFrom:
       secretKeyRef: {name: {{ $atlas.cloudTokenSecret | quote }}, key: {{ $atlas.cloudTokenKey | quote }}}
@@ -192,7 +210,7 @@ spec:
 {{- if $scope }}
 {{- $secrets = append $secrets $atlas.roleConnectionSecret }}
 {{- range $role := .Values.postgres.roles }}
-{{- if $role.login }}{{- $secrets = append $secrets $role.passwordSecret }}{{- end }}
+{{- if and $role.login (ne (default "password" $role.authentication) "certificate") }}{{- $secrets = append $secrets $role.passwordSecret }}{{- end }}
 {{- end }}
 {{- end }}
 {{- range $name, $migration := .Values.postgres.migrations }}

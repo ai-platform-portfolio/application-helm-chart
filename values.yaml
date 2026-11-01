@@ -30,6 +30,7 @@ platform:
   # Native ESO and credential-reader resources; keys are names, specs stay native.
   credentials:
     passwords: {}
+    certificates: {}
     externalSecrets: {}
     secretStores: {}
     serviceAccounts: {}
@@ -44,6 +45,10 @@ platform:
     cluster: platform
     databaseReclaimPolicy: retain
     caSecret: ""
+    clientCertificate:
+      issuerRef: {name: postgres-client, kind: Issuer}
+      duration: 720h
+      renewBefore: 168h
 
   atlas:
     namespace: atlas-system
@@ -56,6 +61,10 @@ platform:
     roleConnectionSecret: atlas-postgres
     connectionKey: url
     passwordKey: password
+    # The shared Atlas certificate is mounted once by the PostgreSQL package.
+    clientCertificate:
+      sslcert: /etc/atlas-postgres/tls.crt
+      sslkey: /etc/atlas-postgres/tls.key
     cloudTokenSecret: atlas-token-secret
     cloudTokenKey: ATLAS_TOKEN
     roleReview: ERROR

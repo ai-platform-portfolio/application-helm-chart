@@ -13,98 +13,21 @@
 {{- $atlas := .root.Values.platform.atlas -}}
 platform:
   credentials:
-    passwords:
-      {{ $base }}-migrator:
+    certificates:
+      {{ $base }}-client:
         metadata:
           namespace: {{ $pg.namespace | quote }}
           annotations:
             argocd.argoproj.io/sync-wave: '-35'
         spec:
-          length: 48
-          digits: 8
-          symbols: 0
-          allowRepeat: true
-      {{ $base }}-runtime:
-        metadata:
-          namespace: {{ $pg.namespace | quote }}
-          annotations:
-            argocd.argoproj.io/sync-wave: '-35'
-        spec:
-          length: 48
-          digits: 8
-          symbols: 0
-          allowRepeat: true
+          secretName: {{ $base }}-client
+          commonName: {{ $runtime | quote }}
+          issuerRef: {{ $pg.clientCertificate.issuerRef | toJson }}
+          duration: {{ $pg.clientCertificate.duration | quote }}
+          renewBefore: {{ $pg.clientCertificate.renewBefore | quote }}
+          privateKey: {rotationPolicy: Always}
+          usages: [digital signature, client auth]
     externalSecrets:
-      {{ $base }}-migrator:
-        metadata:
-          namespace: {{ $pg.namespace | quote }}
-          annotations:
-            argocd.argoproj.io/sync-wave: '-35'
-        spec:
-          refreshPolicy: CreatedOnce
-          target:
-            name: {{ $base }}-migrator
-            creationPolicy: Orphan
-            immutable: true
-          dataFrom:
-          - sourceRef:
-              generatorRef:
-                apiVersion: generators.external-secrets.io/v1alpha1
-                kind: Password
-                name: {{ $base }}-migrator
-      {{ $base }}-migrator-copy:
-        metadata:
-          name: {{ $base }}-migrator
-          namespace: {{ $atlas.namespace | quote }}
-          annotations:
-            argocd.argoproj.io/sync-wave: '-30'
-        spec:
-          refreshInterval: 1m
-          secretStoreRef:
-            name: {{ $atlas.sourceStore | quote }}
-            kind: SecretStore
-          target:
-            name: {{ $base }}-migrator
-          data:
-          - secretKey: password
-            remoteRef:
-              key: {{ $base }}-migrator
-              property: password
-      {{ $base }}-runtime:
-        metadata:
-          namespace: {{ $pg.namespace | quote }}
-          annotations:
-            argocd.argoproj.io/sync-wave: '-35'
-        spec:
-          refreshPolicy: CreatedOnce
-          target:
-            name: {{ $base }}-runtime
-            creationPolicy: Orphan
-            immutable: true
-          dataFrom:
-          - sourceRef:
-              generatorRef:
-                apiVersion: generators.external-secrets.io/v1alpha1
-                kind: Password
-                name: {{ $base }}-runtime
-      {{ $base }}-runtime-copy:
-        metadata:
-          name: {{ $base }}-runtime
-          namespace: {{ $atlas.namespace | quote }}
-          annotations:
-            argocd.argoproj.io/sync-wave: '-30'
-        spec:
-          refreshInterval: 1m
-          secretStoreRef:
-            name: {{ $atlas.sourceStore | quote }}
-            kind: SecretStore
-          target:
-            name: {{ $base }}-runtime
-          data:
-          - secretKey: password
-            remoteRef:
-              key: {{ $base }}-runtime
-              property: password
       {{ $base }}-connection:
         metadata:
           namespace: {{ .root.Values.namespace | quote }}
@@ -120,17 +43,17 @@ platform:
             template:
               engineVersion: v2
               data:
-                url: {{ printf "postgres://%s:{{ .password }}@%s:%v/%s?sslmode=verify-full&sslrootcert=/etc/postgres/ca.crt" $runtime $atlas.connection.host $atlas.connection.port $databaseName | quote }}
-                ca.crt: {{ "{{ index . \"ca.crt\" }}" | quote }}
+                url: {{ printf "postgres://%s@%s:%v/%s?sslmode=verify-full&sslrootcert=/etc/postgres/ca.crt&sslcert=/etc/postgres/tls.crt&sslkey=/etc/postgres/tls.key" $runtime $atlas.connection.host $atlas.connection.port $databaseName | quote }}
+                ca.crt: {{ `{{ index . "ca.crt" }}` | quote }}
+                tls.crt: {{ `{{ index . "tls.crt" }}` | quote }}
+                tls.key: {{ `{{ index . "tls.key" }}` | quote }}
           data:
-          - secretKey: password
-            remoteRef:
-              key: {{ $base }}-runtime
-              property: password
+          - secretKey: tls.crt
+            remoteRef: {key: {{ $base }}-client, property: tls.crt}
+          - secretKey: tls.key
+            remoteRef: {key: {{ $base }}-client, property: tls.key}
           - secretKey: ca.crt
-            remoteRef:
-              key: {{ default (printf "%s-ca" $pg.cluster) $pg.caSecret | quote }}
-              property: ca.crt
+            remoteRef: {key: {{ $base }}-client, property: ca.crt}
     secretStores:
       {{ $base }}-store:
         metadata:
@@ -158,21 +81,6 @@ platform:
             argocd.argoproj.io/sync-wave: '-34'
         automountServiceAccountToken: false
     roles:
-      {{ $base }}-atlas-reader:
-        metadata:
-          namespace: {{ $pg.namespace | quote }}
-          annotations:
-            argocd.argoproj.io/sync-wave: '-34'
-        rules:
-        - apiGroups:
-          - ''
-          resources:
-          - secrets
-          resourceNames:
-          - {{ $base }}-migrator
-          - {{ $base }}-runtime
-          verbs:
-          - get
       {{ $base }}-runtime-reader:
         metadata:
           namespace: {{ $pg.namespace | quote }}
@@ -184,24 +92,10 @@ platform:
           resources:
           - secrets
           resourceNames:
-          - {{ $base }}-runtime
-          - {{ default (printf "%s-ca" $pg.cluster) $pg.caSecret | quote }}
+          - {{ $base }}-client
           verbs:
           - get
     roleBindings:
-      {{ $base }}-atlas-reader:
-        metadata:
-          namespace: {{ $pg.namespace | quote }}
-          annotations:
-            argocd.argoproj.io/sync-wave: '-34'
-        roleRef:
-          apiGroup: rbac.authorization.k8s.io
-          kind: Role
-          name: {{ $base }}-atlas-reader
-        subjects:
-        - kind: ServiceAccount
-          name: {{ $atlas.sourceReader | quote }}
-          namespace: {{ $atlas.namespace | quote }}
       {{ $base }}-runtime-reader:
         metadata:
           namespace: {{ $pg.namespace | quote }}
@@ -228,11 +122,11 @@ postgres:
     {{ $owner }}: {}
     {{ $migrator }}:
       login: true
-      passwordSecret: {{ $base }}-migrator
+      authentication: certificate
       memberOf: [{{ $owner }}, {{ $databaseName | quote }}]
     {{ $runtime }}:
       login: true
-      passwordSecret: {{ $base }}-runtime
+      authentication: certificate
       memberOf: [{{ $databaseName | quote }}]
   migrations:
     {{ .name }}-access:
