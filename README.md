@@ -274,8 +274,8 @@ manager and existing service roles must stay outside the scope. This is a
 trusted platform configuration boundary, not database-enforced tenant isolation.
 Never claim the same database or role from multiple releases.
 
-AtlasSchema owns the declared roles; AtlasMigration owns application schema and
-its GRANT/REVOKE statements. The chart does not invent table privileges for the
+AtlasSchema owns the declared roles. Each AtlasMigration owns its SQL changes:
+application objects or a separate access history, never overlapping grants. The chart does not invent table privileges for the
 runtime role or let two resources reconcile the same grants. CNPG owns database
 creation and its database owner; object ownership follows the migration login or
 explicit reviewed migration SQL. Existing resources need a deliberate ownership
@@ -312,6 +312,65 @@ ordering. Application credential delivery, PostgreSQL HBA rules for the new
 logins, migration publication and live two-preview isolation checks are still
 integration work. Rendering tests do not prove PostgreSQL privileges or Atlas
 licence availability.
+
+### Versioned database access
+
+[database-access.yaml](examples/database-access.yaml) adds a small inline access
+migration before the application's registry migration. It revokes public database
+and schema access, grants runtime CONNECT/USAGE and sets SELECT/INSERT defaults
+for tables created by the migration login in `public`. Both streams must use that
+same login. The migrator inherits the
+CNPG database owner's rights; the runtime is not a member of that owner. Passwords
+remain Secret references. Existing service databases and roles are not adopted.
+
+Use either `repository` + `tag`, or a `local` map of numbered SQL files for each
+`postgres.migrations` entry. Inline files use native Atlas `template_dir`; `roleVars`
+maps template names to roles already declared in `postgres.roles`. For example,
+`"{{ .runtime }}"` in SQL receives the referenced role name, not its password.
+Atlas renders and checksums the directory; Helm does not calculate `atlas.sum`.
+Only trusted platform configuration may supply SQL. Keep large application
+migration histories in the registry, rather than inline Kubernetes objects.
+
+Set `schema: public` on both streams and give them different `revisionsSchema`
+values outside `public`. The schema-scoped connection keeps Atlas's initial
+cleanliness check on the application schema, while each private history stays
+separate. This avoids `allow-dirty` and prevents default runtime table grants
+from exposing either history. The schema must already exist (`public` does in a
+new CNPG database). The chart rejects two streams sharing the same database/history.
+
+Each migration can override the optional `syncWave`; otherwise it uses the
+platform's `atlasMigration` wave. The example orders roles -> database -> access
+migration -> application migration -> workloads. Current-generation Argo health
+checks are required for that ordering to gate progress. HBA rules, password
+Secrets, CA/RBAC and Atlas entitlement remain GitOps prerequisites; this example
+does not deploy them or prove operator readiness.
+
+For inline directories the chart also grants Atlas get/update on the exact
+`io.atlasgo.db.v1.<resource-name>.latest` state Secret, plus Secret create in the
+Atlas namespace. The operator always creates this state, even with downgrades
+blocked. Kubernetes RBAC cannot restrict top-level create by resource name;
+credential reads remain named-only, with no namespace-wide get/list/watch/update.
+Registry-only releases do not receive these additional rules.
+
+Access SQL is **append-only migration history**, not declarative permission
+reconciliation. Never edit an applied file, change its roleVars or remove earlier
+files. Atlas does not rerun edits to applied files or automatically correct grant
+drift; append-only history needs review. Add a new numbered SQL file for each
+grant/revoke change. Defaults affect
+future tables only; revoking existing access also needs explicit REVOKE statements
+on existing tables. Inline access downgrades are always blocked; use a reviewed
+forward correction. Database deletion removes its grants/history, while SQL role
+cleanup remains the separate ordered lifecycle described below.
+
+Atlas's declarative permissions do not persist `ALTER DEFAULT PRIVILEGES` as a
+managed object, so enabling permissions on the role resource would not establish
+this access contract. The access migration owns these grants; the application
+migration owns application objects and must not reconcile the same privileges.
+
+Sources: [default privileges](https://atlasgo.io/guides/postgres/security-default-privileges),
+[operator template-directory test](https://github.com/ariga/atlas-operator/blob/v0.8.4/test/e2e/testscript/migration-template-dir.txtar),
+[migration history](https://atlasgo.io/integrations/kubernetes/versioned#revisionsschema),
+[Kubernetes RBAC limits](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#referring-to-resources).
 
 Database deletion defaults to `retain`; disposable previews explicitly choose
 `delete`. Schema downgrades are blocked by default in `platform.atlas.migrateDown`.

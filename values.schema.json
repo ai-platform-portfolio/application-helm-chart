@@ -187,6 +187,41 @@
               },
               "role": { "type": "string", "minLength": 1 },
               "devURLSecret": { "type": "string", "minLength": 1 },
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "maxLength": 63
+              },
+              "revisionsSchema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "maxLength": 63
+              },
+              "syncWave": {
+                "type": "integer"
+              },
+              "local": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "pattern": "^[0-9]+_[a-zA-Z0-9_-]+\\.sql$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "roleVars": {
+                "type": "object",
+                "propertyNames": {
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "maxLength": 63
+                }
+              },
               "repository": {
                 "type": "string",
                 "minLength": 1
@@ -201,11 +236,16 @@
                 }
               }
             },
-            "required": [
-              "database",
-              "role",
-              "repository",
-              "tag"
+            "required": ["database", "role"],
+            "oneOf": [
+              {
+                "required": ["repository", "tag"],
+                "not": { "anyOf": [{ "required": ["local"] }, { "required": ["roleVars"] }] }
+              },
+              {
+                "required": ["local", "schema", "revisionsSchema"],
+                "not": { "anyOf": [{ "required": ["repository"] }, { "required": ["tag"] }] }
+              }
             ]
           }
         }

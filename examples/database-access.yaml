@@ -1,0 +1,60 @@
+# Overlay on application values. All names and secrets are platform inputs.
+namespace: preview-pr-42
+
+postgres:
+  databases:
+    api:
+      name: preview_pr42
+      owner: preview_pr42_owner
+      reclaimPolicy: delete
+
+  roles:
+    preview_pr42_owner: {}
+    preview_pr42_migrator:
+      login: true
+      passwordSecret: preview-pr42-migrator
+      memberOf: [preview_pr42_owner]
+    preview_pr42_app:
+      login: true
+      passwordSecret: preview-pr42-runtime
+
+  migrations:
+    access:
+      database: api
+      role: preview_pr42_migrator
+      schema: public
+      revisionsSchema: atlas_access_revisions
+      syncWave: -5
+      roleVars:
+        runtime: preview_pr42_app
+      local:
+        1_access.sql: |
+          DO $$ BEGIN
+            EXECUTE format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database());
+            EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I, %I',
+              current_database(), current_user, '{{ .runtime }}');
+          END $$;
+          REVOKE ALL ON SCHEMA public FROM PUBLIC;
+          GRANT USAGE ON SCHEMA public TO "{{ .runtime }}";
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT SELECT, INSERT ON TABLES TO "{{ .runtime }}";
+
+    api:
+      database: api
+      role: preview_pr42_migrator
+      schema: public
+      revisionsSchema: atlas_schema_revisions
+      repository: preview-environments
+      tag: replace-with-full-source-sha
+      syncWave: 0
+
+platform:
+  atlas:
+    roleScope: [preview_pr42_owner, preview_pr42_migrator, preview_pr42_app]
+    rolePlanRepository: preview-roles
+  syncWaves:
+    atlasAccess: -30
+    atlasSchema: -20
+    database: -10
+    deployment: 10
+    rollout: 10
