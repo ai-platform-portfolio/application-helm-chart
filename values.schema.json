@@ -40,6 +40,7 @@
         "type": "object", "additionalProperties": false,
         "properties": {
           "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 63},
+          "reclaimPolicy": {"enum": ["retain", "delete"]},
           "migration": {
             "type": "object", "required": ["repository", "tag"], "additionalProperties": false,
             "properties": {

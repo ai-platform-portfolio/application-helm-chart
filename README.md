@@ -37,7 +37,8 @@ secret plumbing belongs in the developer values. These defaults are versioned ac
 migrations, not automatic permission-drift reconciliation. Keep names/releases stable;
 changing an applied access policy requires a new forward migration, not editing v1.
 The platform operator owns those changes and approved cleanup. Optional database
-`name` overrides its SQL name. Do not combine minimal `databases` with advanced
+`name` overrides its SQL name. Database deletion retains the platform's safe default;
+set `reclaimPolicy: delete` explicitly for disposable data. Do not combine minimal `databases` with advanced
 `postgres` ownership maps.
 
 ### Argo bootstrap — platform operator

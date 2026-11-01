@@ -218,7 +218,7 @@ postgres:
     {{ .name }}:
       name: {{ $databaseName | quote }}
       owner: {{ $owner | quote }}
-      reclaimPolicy: {{ $pg.managedReclaimPolicy }}
+      reclaimPolicy: {{ default $pg.databaseReclaimPolicy .database.reclaimPolicy }}
   roles:
     {{ $owner }}: {}
     {{ $migrator }}:

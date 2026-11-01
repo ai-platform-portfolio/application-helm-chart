@@ -14,7 +14,7 @@ tests:
       - matchRegex:
           path: "spec.owner"
           pattern: '^app_sample_app_poc_messages_[a-f0-9]{12}_owner$'
-      - equal: {path: "spec.databaseReclaimPolicy", value: delete}
+      - equal: {path: "spec.databaseReclaimPolicy", value: retain}
 
   - it: injects runtime connection and CA only into the database consumer
     values: [../examples/managed.yaml]

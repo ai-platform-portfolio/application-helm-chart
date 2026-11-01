@@ -43,7 +43,6 @@ platform:
     namespace: postgres
     cluster: platform
     databaseReclaimPolicy: retain
-    managedReclaimPolicy: delete
     caSecret: ""
 
   atlas:
