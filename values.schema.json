@@ -55,6 +55,19 @@
     "platform": {
       "type": "object",
       "properties": {
+        "lifecycle": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "cleanup": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "image": {"type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$"},
+                "timeoutSeconds": {"type": "integer", "minimum": 60, "maximum": 3600}
+              }
+            }
+          }
+        },
         "argocd": {
           "type": "object",
           "properties": {

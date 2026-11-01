@@ -33,3 +33,6 @@ jobs:
 
       - name: Test chart rendering
         run: helm unittest --strict .
+
+      - name: Test cleanup ordering and failure boundaries
+        run: sh tests/cleanup_test.sh

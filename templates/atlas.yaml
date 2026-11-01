@@ -39,25 +39,12 @@ spec:
       review: {{ $atlas.roleReview }}
       destructive: {error: {{ $atlas.blockDestructiveRoles }}}
   config: |
-    env {{ $atlas.roleEnvironment | toJson }} {
-      include = [
-        {{- range $role := $scope }}
-        {{ printf "%s[type=role|user]" $role | toJson }},
-        {{- end }}
-      ]
-      schema {
-        src = "file://schema.hcl"
-        mode {
-          schemas     = false
-          objects     = false
-          roles       = true
-          permissions = false
-          sensitive   = ALLOW
-        }
-      }
-    }
+    {{- include "application.roleConfig" . | nindent 4 }}
   schema:
     hcl: |
+      {{- if not .Values.postgres.roles }}
+      // Empty desired role state; keep the exact ownership include scope above.
+      {{- end }}
       {{- range $name, $role := .Values.postgres.roles }}
       {{- if not (has $name $scope) }}
       {{- fail (printf "role %s is outside platform.atlas.roleScope" $name) }}

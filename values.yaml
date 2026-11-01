@@ -17,6 +17,13 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  lifecycle:
+    cleanup:
+      enabled: false
+      # Shell + kubectl + jq; runs without database credentials. Operator override only.
+      image: docker.io/dtzar/helm-kubectl:4.3.0@sha256:d5ecd564b636549b4f20012e713dcbac7af4dcac20665e2ca87663452d6654e6
+      timeoutSeconds: 900
+
   argocd:
     enabled: false
     namespace: argocd

@@ -98,8 +98,8 @@ helm template sample-app /path/to/application-helm-chart \
 Review `/tmp/application.yaml` before the separately authorized apply. Do not apply
 an unfiltered bootstrap render. Argo then renders workloads from the pinned chart
 and app values; it explicitly disables child registration to prevent recursion.
-Registration is manual-sync with no cascade finalizer until ordered SQL cleanup
-is proved. Bootstrap metadata is operator input, not developer Kubernetes YAML.
+Registration is manual-sync. It adds a cascade finalizer only when the opt-in
+ordered cleanup below is enabled. Bootstrap metadata is operator input, not developer Kubernetes YAML.
 GitOps remains strictly shared packages; the app repository contains no raw Argo
 manifest, credential YAML or bespoke deployment validator.
 
@@ -108,6 +108,58 @@ current-generation health checks and approved HBA access must already be ready.
 The operator can inspect rendered Database/migration resources for the exact SQL
 names to authorize. Templates and unit tests do not prove live SQL/application
 acceptance. Existing database/role ownership is not adopted.
+
+### Disposable cleanup — platform operator
+
+For an exclusive application namespace using minimal `databases` intent, set
+`platform.lifecycle.cleanup.enabled=true` at registration. The registration template
+forwards the cleanup settings into its child render. Every database must explicitly
+set `reclaimPolicy: delete`; retained databases and advanced `postgres` ownership
+maps reject this mode. Applications add no cleanup manifests or scripts.
+
+This requires Argo CD with native **PreDelete** support (implementation checked
+against [v3.5.5](https://github.com/argoproj/argo-cd/blob/v3.5.5/controller/hook.go)).
+On Application deletion, its finalizer holds ordinary resource removal until the
+chart's Job stops workloads/drains pods, removes migrations, waits for CNPG's
+database-delete finalizer, reconciles the exact owned role scope to empty and removes
+derived client credentials and inline migration-state Secrets. Role removal retains
+lint/review policy; these flags do not reliably require approval for DROP ROLE.
+The ownership include scope and confirmed database removal are the safety boundary.
+Argo then cascades remaining resources and removes the hook resources.
+
+The Job runs in the existing Atlas namespace, with no database credentials. Named
+Roles grant get/patch/delete only where needed; Secret access is delete-only for
+derived leaf/copy/state names. Only pod listing is namespace-wide, within the
+exclusive application namespace. Application cleanup access syncs before SQL resources;
+shared-namespace Job/SA/RBAC are created by the deletion hook. A never-provisioned
+application therefore needs no application namespace or successful initial sync.
+An existing Database without its Atlas role resource stops deletion. This supports
+chart-ordered partial deployment and retries, not discovery of orphan SQL objects
+after manual CR removal. Keep namespace, release, database keys and SQL names stable
+for the environment's lifetime; structural renames/ownership adoption require a
+separate migration plan. Do not selectively sync around the ordering dependencies.
+
+API errors, identity/scope mismatches, unfinalized databases or stale Atlas Ready
+conditions cannot release the deletion gate. Each Job has a bounded deadline
+(`timeoutSeconds`, default 900) and three Pod retries; Argo retries failed delete
+hooks. Each new Pod changes an empty-HCL comment to retrigger Atlas after an apply
+failure. A persistent failure leaves the Application terminating: inspect the Job
+and operator conditions, fix the cause and let it retry; do not remove finalizers
+to bypass SQL cleanup. Shared CA/Atlas credentials, services, registry artifacts
+and Terraform state are outside cleanup.
+
+The digest-pinned `dtzar/helm-kubectl` runtime supplies shell/kubectl/jq; the official
+kubectl image has no shell. This avoids a custom image pipeline, at the cost of
+third-party image maintenance and unused Helm tooling. Its kubectl v1.37 is within
+one minor of the verified v1.36 server; operators must keep image/server versions
+compatible. The Job uses UID65532, a read-only root and writable temporary volume.
+Helm pre-delete annotations prevent the hook Job running during a Helm install;
+the supported lifecycle here is Argo Application deletion, not a raw manifest apply.
+
+Helm tests and the shell execution tests validate rendering, ordering and failure
+boundaries without a cluster. The native deletion hook, shared-service preservation
+and real partial-failure/retry acceptance must still be proved live before enabling
+unattended preview deletion. Automatic PR ApplicationSets remain separate work.
 
 ## Advanced resource configuration
 
