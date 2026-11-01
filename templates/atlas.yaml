@@ -1,4 +1,5 @@
-{{- include "application.defaults" . -}}
+{{/* Used for normal ownership and the empty PostDelete desired state. */}}
+{{- define "application.roleSchemaSpec" -}}
 {{- $atlas := .Values.platform.atlas }}
 {{- $scope := $atlas.roleScope }}
 {{- $hasPasswords := false }}
@@ -16,16 +17,6 @@
 {{- fail "platform.atlas.roleScope must explicitly list the roles this release owns" }}
 {{- end }}
 
-{{- if $scope }}
-apiVersion: db.atlasgo.io/v1alpha1
-kind: AtlasSchema
-metadata:
-  name: {{ include "application.resourceName" (dict "root" . "name" "roles") }}
-  namespace: {{ $atlas.namespace | quote }}
-  {{- if hasKey .Values.platform.syncWaves "atlasSchema" }}
-  annotations:
-    argocd.argoproj.io/sync-wave: {{ .Values.platform.syncWaves.atlasSchema | quote }}
-  {{- end }}
 spec:
   envName: {{ $atlas.roleEnvironment | quote }}
   urlFrom:
@@ -58,6 +49,9 @@ spec:
     }
   schema:
     hcl: |
+      {{- if not .Values.postgres.roles }}
+      // Empty desired role state; keep the exact ownership include scope above.
+      {{- end }}
       {{- range $name, $role := .Values.postgres.roles }}
       {{- if not (has $name $scope) }}
       {{- fail (printf "role %s is outside platform.atlas.roleScope" $name) }}
@@ -102,6 +96,26 @@ spec:
     {{- end }}
     {{- end }}
   {{- end }}
+{{- end -}}
+
+{{- include "application.defaults" . -}}
+{{- $atlas := .Values.platform.atlas }}
+{{- $scope := $atlas.roleScope }}
+{{- if and .Values.postgres.roles (not $scope) }}
+{{- fail "platform.atlas.roleScope must explicitly list the roles this release owns" }}
+{{- end }}
+
+{{- if $scope }}
+apiVersion: db.atlasgo.io/v1alpha1
+kind: AtlasSchema
+metadata:
+  name: {{ include "application.resourceName" (dict "root" . "name" "roles") }}
+  namespace: {{ $atlas.namespace | quote }}
+  {{- if hasKey .Values.platform.syncWaves "atlasSchema" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.platform.syncWaves.atlasSchema | quote }}
+  {{- end }}
+{{ include "application.roleSchemaSpec" . }}
 ---
 {{- end }}
 

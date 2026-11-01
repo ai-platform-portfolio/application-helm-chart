@@ -1,0 +1,145 @@
+{{- include "application.defaults" . -}}
+{{- $cleanup := .Values.platform.lifecycle.cleanup }}
+{{- if $cleanup.enabled }}
+{{- if not .Values.databases }}
+{{- fail "cleanup requires minimal databases intent; advanced postgres maps are not supported" }}
+{{- end }}
+{{- $atlas := .Values.platform.atlas }}
+{{- $pg := .Values.platform.postgres }}
+{{- if has .Values.namespace (list $atlas.namespace $pg.namespace .Values.platform.argocd.namespace "default" "kube-system" "kube-public" "kube-node-lease") }}
+{{- fail "cleanup requires an exclusive application namespace, separate from shared services" }}
+{{- end }}
+{{- $clients := list }}
+{{- range $key, $database := .Values.postgres.databases }}
+{{- if ne (default $pg.databaseReclaimPolicy $database.reclaimPolicy) "delete" }}
+{{- fail (printf "cleanup requires reclaimPolicy: delete for database %s" $key) }}
+{{- end }}
+{{- $client := printf "%s-client" (include "application.resourceName" (dict "root" $ "name" $key)) }}
+{{- $certificate := index $.Values.platform.credentials.certificates $client }}
+{{- if or (ne $certificate.spec.secretName $client) (ne $certificate.metadata.namespace $pg.namespace) (ne (default $client $certificate.metadata.name) $client) }}
+{{- fail "cleanup requires the generated certificate resource and Secret names/namespaces" }}
+{{- end }}
+{{- $clients = append $clients $client }}
+{{- end }}
+{{- $name := include "application.resourceName" (dict "root" . "name" "cleanup") }}
+{{- $empty := deepCopy . }}
+{{- $_ := set $empty.Values.postgres "roles" dict }}
+# Reverse-wave deletion finishes first. The normal Atlas resource is removed
+# before Argo creates this empty desired state.
+apiVersion: db.atlasgo.io/v1alpha1
+kind: AtlasSchema
+metadata:
+  name: {{ $name }}
+  namespace: {{ $atlas.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+{{ include "application.roleSchemaSpec" $empty }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ $atlas.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: {{ list $atlas.cloudTokenSecret $atlas.roleConnectionSecret | uniq | sortAlpha | toJson }}
+    verbs: [get]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ $atlas.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}}
+subjects:
+  - {kind: ServiceAccount, name: {{ $atlas.serviceAccount | quote }}, namespace: {{ $atlas.namespace | quote }}}
+
+---
+# Source leaf Secrets currently lack owner references. ESO copies and Atlas
+# migration state use native garbage collection; only source leaves need a Job.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ $pg.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+automountServiceAccountToken: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-clients
+  namespace: {{ $pg.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: {{ $clients | toJson }}
+    verbs: [delete]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-clients
+  namespace: {{ $pg.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}-clients}
+subjects:
+  - {kind: ServiceAccount, name: {{ $name }}, namespace: {{ $pg.namespace | quote }}}
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ $pg.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+spec:
+  activeDeadlineSeconds: {{ $cleanup.timeoutSeconds }}
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: delete-client-secrets
+          image: {{ $cleanup.image | quote }}
+          args: {{ concat (list "delete" "secrets" "--namespace" $pg.namespace "--ignore-not-found" "--wait=false" "--cache-dir=/tmp") $clients | toJson }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+{{- end }}

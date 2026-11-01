@@ -98,8 +98,8 @@ helm template sample-app /path/to/application-helm-chart \
 Review `/tmp/application.yaml` before the separately authorized apply. Do not apply
 an unfiltered bootstrap render. Argo then renders workloads from the pinned chart
 and app values; it explicitly disables child registration to prevent recursion.
-Registration is manual-sync with no cascade finalizer until ordered SQL cleanup
-is proved. Bootstrap metadata is operator input, not developer Kubernetes YAML.
+Registration is manual-sync. It adds a cascade finalizer only when the opt-in
+ordered cleanup below is enabled. Bootstrap metadata is operator input, not developer Kubernetes YAML.
 GitOps remains strictly shared packages; the app repository contains no raw Argo
 manifest, credential YAML or bespoke deployment validator.
 
@@ -108,6 +108,57 @@ current-generation health checks and approved HBA access must already be ready.
 The operator can inspect rendered Database/migration resources for the exact SQL
 names to authorize. Templates and unit tests do not prove live SQL/application
 acceptance. Existing database/role ownership is not adopted.
+
+### Disposable cleanup — platform operator
+
+For an exclusive application namespace using minimal `databases` intent, set
+`platform.lifecycle.cleanup.enabled=true` at registration. The registration template
+forwards the cleanup settings into its child render. Every database must explicitly
+set `reclaimPolicy: delete`; retained databases and advanced `postgres` ownership
+maps reject this mode. Applications add no cleanup manifests or scripts.
+
+Argo deletes normal resources in **reverse sync-wave order**: workloads first,
+then migrations, the CNPG database (through its SQL-deletion finalizer), normal
+Atlas resources/access and finally the application namespace. There is no shell
+coordinator, workload patching, custom polling or cleanup access in the app namespace.
+This uses the native [Application deletion implementation](https://github.com/argoproj/argo-cd/blob/v3.5.5/controller/sort_delete.go),
+checked at the installed Argo v3.5.5. Keep the chart's dependency wave ordering.
+
+Deleting an AtlasSchema leaves SQL roles behind. After ordinary cascading deletion
+finishes, a **PostDelete AtlasSchema** requests an empty role state with the same
+exact include scope, shared connection, cloud repository and lint/review policy.
+It uses the same spec helper as normal role management. Argo's installed Atlas
+health check waits for current-generation Ready; failed hooks are recreated by
+Argo. The Application's deletion finalizer remains until hooks complete. No
+independent SQL script or second database role owner is added.
+
+Atlas migration-state Secrets have native owner references; ESO copies and the
+application namespace also use Kubernetes garbage collection. The source runtime
+client Secrets currently lack certificate owner references. A small PostDelete
+Job therefore calls official, digest-pinned kubectl directly to delete only those
+derived leaf names, with delete-only RBAC. It has no shell, SQL credentials or
+shared-secret reads; UID65532/read-only root and a temporary discovery cache.
+`image` and `timeoutSeconds` (default 900) remain operator settings for this Job.
+The Atlas operator separately receives named get access to its existing shared
+connection and cloud-token Secrets during PostDelete. Shared CA/Atlas credentials,
+services, registry artifacts and Terraform state are preserved.
+
+Prerequisites include the existing Atlas entitlement/plan repository, native Argo
+PostDelete and current-generation Atlas health checks. Keep namespace, release,
+database keys and SQL names stable for the environment lifetime; historical SQL
+objects from renamed identities require a separate migration plan. Do not bypass
+CNPG or Application finalizers. A failed/approval-pending cleanup leaves the
+Application terminating for diagnosis and native retry. Role lint/review flags
+are preserved but do not reliably require approval for DROP ROLE.
+
+Local PostgreSQL/Atlas proof covers fresh empty desired state, database ownership
+blocking early role removal, three isolated identities, preserved other/shared
+roles and repeated no-op cleanup. These CLI tests plus controller source checks
+are not native live-hook acceptance. Reverse-wave deletion, garbage collection,
+current-generation hook health and partial/in-flight deployment deletion/retry must
+still be proved live before unattended previews. Helm hook annotations prevent
+install-time execution; the supported lifecycle here is Argo Application deletion.
+Automatic PR ApplicationSets remain separate work.
 
 ## Advanced resource configuration
 

@@ -1,0 +1,119 @@
+suite: Ordered disposable application cleanup
+
+release:
+  name: poc
+
+values: [../examples/managed.yaml]
+
+tests:
+  - it: renders no cleanup resources by default
+    template: templates/lifecycle/cleanup.yaml
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: refuses the safe retained-database default
+    set: {platform.lifecycle.cleanup.enabled: true}
+    asserts:
+      - failedTemplate: {errorPattern: 'cleanup requires reclaimPolicy: delete for database messages'}
+
+  - it: refuses cleanup if any database is retained
+    set:
+      platform.lifecycle.cleanup.enabled: true
+      databases.messages.reclaimPolicy: delete
+      databases.audit: {}
+    asserts:
+      - failedTemplate: {errorPattern: 'cleanup requires reclaimPolicy: delete for database audit'}
+
+  - it: refuses a shared application namespace
+    set:
+      namespace: atlas-system
+      platform.lifecycle.cleanup.enabled: true
+    asserts:
+      - failedTemplate: {errorPattern: 'cleanup requires an exclusive application namespace'}
+
+  - it: refuses orphaning a renamed source credential
+    set:
+      platform.lifecycle.cleanup.enabled: true
+      databases.messages.reclaimPolicy: delete
+      platform.credentials.certificates.sample-app-poc-messages-65df31a804f0-client.spec.secretName: another-secret
+    asserts:
+      - failedTemplate: {errorPattern: 'cleanup requires the generated certificate resource and Secret names/namespaces'}
+
+  - it: deletes only source client Secrets with native kubectl and no shell or SQL credentials
+    set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
+    template: templates/lifecycle/cleanup.yaml
+    documentSelector: {path: kind, value: Job}
+    asserts:
+      - equal: {path: metadata.namespace, value: postgres}
+      - equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PostDelete}
+      - equal: {path: spec.activeDeadlineSeconds, value: 900}
+      - equal: {path: spec.backoffLimit, value: 3}
+      - equal: {path: spec.template.spec.securityContext.runAsUser, value: 65532}
+      - equal: {path: 'spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem', value: true}
+      - equal:
+          path: 'spec.template.spec.containers[0].args'
+          value: [delete, secrets, --namespace, postgres, --ignore-not-found, --wait=false, --cache-dir=/tmp, sample-app-poc-messages-65df31a804f0-client]
+      - notExists: {path: 'spec.template.spec.containers[0].command'}
+      - notExists: {path: 'spec.template.spec.containers[0].env'}
+      - equal: {path: spec.template.spec.volumes, value: [{name: tmp, emptyDir: {}}]}
+
+  - it: grants the Secret Job deletion only for its named source leaves
+    set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
+    template: templates/lifecycle/cleanup.yaml
+    documentSelector: {path: 'rules[0].verbs[0]', value: delete}
+    asserts:
+      - equal: {path: metadata.namespace, value: postgres}
+      - equal:
+          path: rules
+          value: [{apiGroups: [''], resources: [secrets], resourceNames: [sample-app-poc-messages-65df31a804f0-client], verbs: [delete]}]
+
+  - it: grants Atlas only its existing shared connection and cloud token reads
+    set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
+    template: templates/lifecycle/cleanup.yaml
+    documentSelector: {path: 'rules[0].verbs[0]', value: get}
+    asserts:
+      - equal: {path: metadata.namespace, value: atlas-system}
+      - equal:
+          path: rules
+          value: [{apiGroups: [''], resources: [secrets], resourceNames: [atlas-postgres, atlas-token-secret], verbs: [get]}]
+
+  - it: asks Atlas for an empty scoped role state after normal resources are deleted
+    set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
+    template: templates/lifecycle/cleanup.yaml
+    documentSelector: {path: kind, value: AtlasSchema}
+    asserts:
+      - equal: {path: metadata.namespace, value: atlas-system}
+      - equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PostDelete}
+      - equal: {path: spec.schema.hcl, value: "// Empty desired role state; keep the exact ownership include scope above.\n"}
+      - equal: {path: spec.policy.lint, value: {review: ERROR, destructive: {error: true}}}
+      - equal: {path: spec.urlFrom.secretKeyRef, value: {name: atlas-postgres, key: url}}
+      - notExists: {path: spec.vars}
+      - matchRegex: {path: spec.config, pattern: '"app_sample_app_poc_messages_65df31a804f0_owner\[type=role\|user\]"'}
+
+  - it: forwards cleanup settings into the child and enables cascade only with cleanup
+    set:
+      platform.lifecycle.cleanup.enabled: true
+      databases.messages.reclaimPolicy: delete
+      platform.argocd.enabled: true
+      platform.argocd.repository: https://github.com/example/app.git
+      platform.argocd.revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      platform.argocd.chartRevision: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    template: templates/argocd/application.yaml
+    asserts:
+      - equal: {path: metadata.finalizers, value: [resources-finalizer.argocd.argoproj.io]}
+      - equal: {path: 'spec.sources[0].helm.valuesObject.platform.lifecycle.cleanup.enabled', value: true}
+      - equal: {path: 'spec.sources[0].helm.valuesObject.platform.argocd.enabled', value: false}
+
+  - it: isolates role cleanup for a second app with multiple databases
+    set:
+      name: other-app
+      namespace: other-app
+      platform.lifecycle.cleanup.enabled: true
+      databases.messages.reclaimPolicy: delete
+      databases.audit.reclaimPolicy: delete
+    template: templates/lifecycle/cleanup.yaml
+    documentSelector: {path: kind, value: AtlasSchema}
+    asserts:
+      - notMatchRegex: {path: spec.config, pattern: sample_app}
+      - matchRegex: {path: spec.config, pattern: 'app_other_app_poc_audit_[a-f0-9]{12}'}
+      - matchRegex: {path: spec.config, pattern: 'app_other_app_poc_messages_[a-f0-9]{12}'}

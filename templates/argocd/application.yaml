@@ -6,6 +6,9 @@ kind: Application
 metadata:
   name: {{ required "name is required for Argo registration" .Values.name | quote }}
   namespace: {{ $argo.namespace | quote }}
+  {{- if .Values.platform.lifecycle.cleanup.enabled }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+  {{- end }}
 spec:
   project: {{ $argo.project | quote }}
   destination:
@@ -22,10 +25,13 @@ spec:
         valuesObject:
           platform:
             argocd: {enabled: false}
+            lifecycle:
+              cleanup:
+                {{- toYaml .Values.platform.lifecycle.cleanup | nindent 16 }}
     - repoURL: {{ required "platform.argocd.repository is required" $argo.repository | quote }}
       targetRevision: {{ required "platform.argocd.revision must pin app values" $argo.revision | quote }}
       ref: application
-  # Registration is explicit; SQL cleanup must be proved before enabling cascade.
+  # Cleanup is opt-in. PostDelete must succeed before deletion completes.
   syncPolicy:
     retry:
       limit: 3

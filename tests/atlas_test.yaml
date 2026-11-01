@@ -162,7 +162,7 @@ tests:
     asserts:
       - equal:
           path: spec.schema.hcl
-          value: ''
+          value: "// Empty desired role state; keep the exact ownership include scope above.\n"
 
       - equal:
           path: spec.policy.lint.destructive.error
