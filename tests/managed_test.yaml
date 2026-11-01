@@ -16,6 +16,40 @@ tests:
           pattern: '^app_sample_app_poc_messages_[a-f0-9]{12}_owner$'
       - equal: {path: "spec.databaseReclaimPolicy", value: retain}
 
+  - it: gives each login its database connection group without giving runtime ownership
+    values: [../examples/managed.yaml]
+    template: templates/atlas.yaml
+    documentSelector: {path: "kind", value: AtlasSchema}
+    asserts:
+      - matchRegex:
+          path: "spec.schema.hcl"
+          pattern: 'role "app_sample_app_poc_messages_65df31a804f0" \{\s+superuser\s+= false\s+create_db\s+= false\s+create_role = false\s+\}'
+      - matchRegex:
+          path: "spec.schema.hcl"
+          pattern: 'user "app_sample_app_poc_messages_65df31a804f0_app" \{[^}]+member_of = \[\s+role.app_sample_app_poc_messages_65df31a804f0,\s+\]'
+      - matchRegex:
+          path: "spec.schema.hcl"
+          pattern: 'user "app_sample_app_poc_messages_65df31a804f0_migrator" \{[^}]+member_of = \[\s+role.app_sample_app_poc_messages_65df31a804f0_owner,\s+role.app_sample_app_poc_messages_65df31a804f0,\s+\]'
+      - matchRegex:
+          path: "spec.config"
+          pattern: '"app_sample_app_poc_messages_65df31a804f0\[type=role\|user\]"'
+
+  - it: follows an overridden SQL database name for the connection group
+    values: [../examples/managed.yaml]
+    set: {databases.messages.name: custom_messages}
+    template: templates/atlas.yaml
+    documentSelector: {path: "kind", value: AtlasSchema}
+    asserts:
+      - matchRegex: {path: "spec.schema.hcl", pattern: 'role "custom_messages" \{'}
+      - matchRegex: {path: "spec.schema.hcl", pattern: 'role.custom_messages,'}
+      - matchRegex: {path: "spec.config", pattern: '"custom_messages\[type=role\|user\]"'}
+
+  - it: rejects a connection group that would collide with an elevated role
+    values: [../examples/managed.yaml]
+    set: {databases.messages.name: app_sample_app_poc_messages_65df31a804f0_owner}
+    asserts:
+      - failedTemplate: {errorPattern: 'database name must differ from its owner, migrator and runtime roles'}
+
   - it: injects runtime connection and CA only into the database consumer
     values: [../examples/managed.yaml]
     documentSelector: {path: "metadata.name", value: api}

@@ -6,6 +6,9 @@
 {{- $migrator := printf "%s_migrator" $sql -}}
 {{- $runtime := printf "%s_app" $sql -}}
 {{- $databaseName := default $sql .database.name -}}
+{{- if has $databaseName (list $owner $migrator $runtime) -}}
+{{- fail "database name must differ from its owner, migrator and runtime roles" -}}
+{{- end -}}
 {{- $pg := .root.Values.platform.postgres -}}
 {{- $atlas := .root.Values.platform.atlas -}}
 platform:
@@ -220,14 +223,17 @@ postgres:
       owner: {{ $owner | quote }}
       reclaimPolicy: {{ default $pg.databaseReclaimPolicy .database.reclaimPolicy }}
   roles:
+    # samerole HBA checks this database-named group; it owns nothing.
+    {{ $databaseName | quote }}: {}
     {{ $owner }}: {}
     {{ $migrator }}:
       login: true
       passwordSecret: {{ $base }}-migrator
-      memberOf: [{{ $owner }}]
+      memberOf: [{{ $owner }}, {{ $databaseName | quote }}]
     {{ $runtime }}:
       login: true
       passwordSecret: {{ $base }}-runtime
+      memberOf: [{{ $databaseName | quote }}]
   migrations:
     {{ .name }}-access:
       database: {{ .name }}
