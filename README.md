@@ -41,6 +41,15 @@ The platform operator owns those changes and approved cleanup. Optional database
 set `reclaimPolicy: delete` explicitly for disposable data. Do not combine minimal `databases` with advanced
 `postgres` ownership maps.
 
+Each database also gets a NOLOGIN connection group with the exact SQL database
+name. Only its migration/runtime logins join it; the group owns no objects and
+receives no SQL privileges. The shared PostgreSQL package uses a TLS/SCRAM
+`samerole` HBA rule for chart-generated logins, so membership restricts connections
+to their own database even before access migrations run. New applications/PRs
+need no server configuration edits. PostgreSQL's native [samerole rule](https://www.postgresql.org/docs/18/auth-pg-hba-conf.html)
+and the existing per-database SQL grants enforce separate checks. Platform policy
+must be installed before deploying this profile; Helm alone cannot configure HBA.
+
 ### Argo bootstrap — platform operator
 
 The reusable registration template is `templates/argocd/application.yaml`. Render
