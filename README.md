@@ -142,6 +142,21 @@ environment values when a workload must wait for Azure provisioning. Preview
 cleanup must remove the federated credential before the shared identity's
 platform lifecycle ends.
 
+Main containers accept native Kubernetes `env` entries, including Secret references.
+An optional component `readinessProbe` merges with the platform readiness defaults;
+`healthPath` still supplies liveness. For a database-backed API:
+
+```yaml
+components:
+  api:
+    # image, port and healthPath are configured as usual.
+    env:
+      - name: DATABASE_URL
+        valueFrom: {secretKeyRef: {name: runtime-database, key: url}}
+    readinessProbe:
+      httpGet: {path: /api/readyz}
+```
+
 ## Render the example
 
 ```sh

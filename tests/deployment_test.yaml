@@ -237,3 +237,21 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: telemetry.*image|image.*telemetry
+
+  - it: keeps credentials component-scoped and database readiness separate from liveness
+    values: [../examples/application.yaml, ../examples/preview.yaml]
+    set:
+      components.frontend.env:
+        - name: DATABASE_URL
+          valueFrom: {secretKeyRef: {name: runtime, key: url}}
+      components.frontend.readinessProbe.httpGet.path: /readyz
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef
+          value: {name: runtime, key: url}
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /readyz, port: http}
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /

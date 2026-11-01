@@ -192,3 +192,19 @@ tests:
       - equal:
           path: spec.template.metadata.annotations["azure.workload.identity/skip-containers"]
           value: configure;metrics
+
+  - it: supports native environment and readiness fields on Rollouts
+    values: [../examples/application.yaml, ../examples/preview.yaml]
+    set:
+      components.backend.env: [{name: MODE, value: preview}]
+      components.backend.readinessProbe.httpGet.path: /api/readyz
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value: [{name: MODE, value: preview}]
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /api/readyz
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /api/healthz
