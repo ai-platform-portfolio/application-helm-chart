@@ -1,5 +1,76 @@
 # Application chart
 
+Application developers declare intent; the chart owns Kubernetes resource defaults,
+Argo registration, database roles, credentials, RBAC, verified TLS and ordering.
+The app repository needs only a values file like [managed.yaml](examples/managed.yaml):
+
+```yaml
+name: sample-app
+hostname: sample.example.test
+components:
+  web:
+    image: registry.example/web@sha256:...
+    port: 8080
+  api:
+    image: registry.example/api@sha256:...
+    port: 8000
+    healthPath: /healthz
+    readinessPath: /readyz
+    database: messages
+databases:
+  messages:
+    migration: {repository: app-migrations, tag: reviewed-source-sha}
+```
+
+`name` defaults the namespace. `hostname` exposes the `web` component by default
+(configurable through `platform.gateway.defaultComponent`); other components stay
+internal. Health defaults to `/`; app-specific health/readiness paths are meaningful
+app inputs. Images stay digest-pinned. `database: messages` injects DATABASE_URL and
+mounts only the CA into that component; `databaseEnv` can change the variable name.
+
+Each database request derives isolated SQL/resource names from namespace, release
+and database key. The chart creates a non-login owner, migration/runtime logins,
+stable ESO credentials, named reader access, a CNPG database and separate protected
+access/application migrations. Runtime defaults are SELECT/INSERT on application
+tables in public; metadata stays in private revision schemas. No SQL permissions or
+secret plumbing belongs in the developer values. These defaults are versioned access
+migrations, not automatic permission-drift reconciliation. Keep names/releases stable;
+changing an applied access policy requires a new forward migration, not editing v1.
+The platform operator owns those changes and approved cleanup. Optional database
+`name` overrides its SQL name. Do not combine minimal `databases` with advanced
+`postgres` ownership maps.
+
+### Argo bootstrap — platform operator
+
+The reusable registration template is `templates/argocd/application.yaml`. Render
+**only that template** for one-time registration, after deployment approval:
+
+```sh
+helm template sample-app /path/to/application-helm-chart \
+  -f /path/to/app/deploy/values.yaml \
+  --set platform.argocd.enabled=true \
+  --set-string platform.argocd.repository=https://github.com/org/app.git \
+  --set-string platform.argocd.revision=<reviewed-values-commit> \
+  --set-string platform.argocd.chartRevision=<reviewed-chart-commit> \
+  --show-only templates/argocd/application.yaml > /tmp/application.yaml
+```
+
+Review `/tmp/application.yaml` before the separately authorized apply. Do not apply
+an unfiltered bootstrap render. Argo then renders workloads from the pinned chart
+and app values; it explicitly disables child registration to prevent recursion.
+Registration is manual-sync with no cascade finalizer until ordered SQL cleanup
+is proved. Bootstrap metadata is operator input, not developer Kubernetes YAML.
+GitOps remains strictly shared packages; the app repository contains no raw Argo
+manifest, credential YAML or bespoke deployment validator.
+
+Shared CNPG/ESO/Atlas/Argo/Gateway prerequisites, Atlas entitlement/schema-plan repo,
+current-generation health checks and approved HBA access must already be ready.
+The operator can inspect rendered Database/migration resources for the exact SQL
+names to authorize. Templates and unit tests do not prove live SQL/application
+acceptance. Existing database/role ownership is not adopted.
+
+## Advanced resource configuration
+
 This chart lets an application describe its workloads without writing Kubernetes
 manifests. Each entry in `components` creates a Deployment or Argo Rollout and
 its Services. A component with a `route` also gets an HTTPS HTTPRoute. Each entry in
@@ -62,7 +133,8 @@ Application routes remain separate per component
 so Rollouts can manage the backend route's weights. The example Rollout promotes
 immediately. A later delivery change will add measured steps and blocking tests.
 
-Argo CD sync wave annotations are absent by default. Set only the resource kinds
+For advanced resource maps, Argo CD sync wave annotations are absent by default.
+Minimal database intent supplies its dependency waves automatically. Set only the resource kinds
 that need ordering in `platform.syncWaves`. Supported keys are `namespace`,
 `deployment`, `service`, `rollout`, `listenerSet` and `httpRoute`. Each configured
 wave applies to every rendered resource of that kind, including redirect routes.

@@ -1,3 +1,4 @@
+{{- include "application.defaults" . -}}
 {{- range $name, $container := .Values.platform.azure.storageContainers }}
 {{- $scope := include "application.azureScope" (dict "root" $ "target" "storageAccount") }}
 apiVersion: storage.azure.com/v20230101

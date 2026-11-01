@@ -1,3 +1,4 @@
+{{- include "application.defaults" . -}}
 # UserAssignedIdentity
 {{- range $name, $identity := .Values.platform.azure.identities }}
 {{- if ne $identity.create false }}

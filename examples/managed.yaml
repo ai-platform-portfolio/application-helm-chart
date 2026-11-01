@@ -1,0 +1,17 @@
+name: sample-app
+hostname: sample.example.test
+
+components:
+  web:
+    image: example.test/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    port: 8080
+  api:
+    image: example.test/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    port: 8000
+    healthPath: /healthz
+    readinessPath: /readyz
+    database: messages
+
+databases:
+  messages:
+    migration: {repository: sample-migrations, tag: reviewed-source-sha}

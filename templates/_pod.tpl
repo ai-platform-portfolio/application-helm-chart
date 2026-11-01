@@ -71,6 +71,9 @@ spec:
 
       volumeMounts:
         {{- toYaml .root.Values.platform.pod.volumeMounts | nindent 8 }}
+        {{- if .component.database }}
+        - {name: database-ca, mountPath: /etc/postgres, readOnly: true}
+        {{- end }}
 
     {{- range $name, $config := .component.sidecars }}
     {{- if eq $name $.name }}
@@ -81,4 +84,10 @@ spec:
 
   volumes:
     {{- toYaml .root.Values.platform.pod.volumes | nindent 4 }}
+    {{- if .component.database }}
+    - name: database-ca
+      secret:
+        secretName: {{ printf "%s-connection" (include "application.resourceName" (dict "root" .root "name" .component.database)) | quote }}
+        items: [{key: ca.crt, path: ca.crt}]
+    {{- end }}
 {{- end -}}

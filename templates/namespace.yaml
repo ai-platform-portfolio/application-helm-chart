@@ -1,3 +1,4 @@
+{{- include "application.defaults" . -}}
 {{- $credentials := false }}
 {{- range .Values.platform.credentials }}
 {{- if . }}{{- $credentials = true }}{{- end }}

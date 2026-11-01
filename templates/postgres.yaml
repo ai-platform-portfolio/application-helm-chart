@@ -1,3 +1,4 @@
+{{- include "application.defaults" . -}}
 {{- $names := dict }}
 {{- range $name, $database := .Values.postgres.databases }}
 {{- if hasKey $names $database.name }}
