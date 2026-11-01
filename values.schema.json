@@ -68,6 +68,7 @@
           "additionalProperties": false,
           "properties": {
             "passwords": {"type": "object", "additionalProperties": {"$ref": "#/definitions/credentialSpec"}},
+            "certificates": {"type": "object", "additionalProperties": {"$ref": "#/definitions/credentialSpec"}},
             "externalSecrets": {"type": "object", "additionalProperties": {"$ref": "#/definitions/credentialSpec"}},
             "secretStores": {"type": "object", "additionalProperties": {"$ref": "#/definitions/credentialSpec"}},
             "serviceAccounts": {
@@ -244,6 +245,7 @@
               "login": {
                 "type": "boolean"
               },
+              "authentication": {"enum": ["password", "certificate"]},
               "passwordSecret": {
                 "type": "string",
                 "minLength": 1

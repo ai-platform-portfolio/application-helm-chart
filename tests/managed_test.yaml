@@ -33,6 +33,61 @@ tests:
       - matchRegex:
           path: "spec.config"
           pattern: '"app_sample_app_poc_messages_65df31a804f0\[type=role\|user\]"'
+      - notMatchRegex: {path: spec.schema.hcl, pattern: 'password|variable'}
+      - notExists: {path: spec.vars}
+
+  - it: issues only the derived runtime identity through the configured client issuer
+    values: [../examples/managed.yaml]
+    template: templates/credentials/secrets.yaml
+    documentSelector: {path: kind, value: Certificate}
+    asserts:
+      - equal: {path: metadata.namespace, value: postgres}
+      - equal: {path: spec.commonName, value: app_sample_app_poc_messages_65df31a804f0_app}
+      - equal: {path: spec.secretName, value: sample-app-poc-messages-65df31a804f0-client}
+      - equal: {path: spec.issuerRef, value: {name: postgres-client, kind: Issuer}}
+      - equal: {path: spec.usages, value: [digital signature, client auth]}
+      - equal: {path: spec.privateKey.rotationPolicy, value: Always}
+      - equal: {path: spec.renewBefore, value: 168h}
+      - equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '-35'}
+
+  - it: delivers one refreshable runtime leaf copy with a password-free TLS URL
+    values: [../examples/managed.yaml]
+    template: templates/credentials/secrets.yaml
+    documentSelector: {path: kind, value: ExternalSecret}
+    asserts:
+      - equal: {path: metadata.namespace, value: sample-app}
+      - equal: {path: spec.refreshInterval, value: 1m}
+      - equal:
+          path: spec.data
+          value:
+            - {secretKey: tls.crt, remoteRef: {key: sample-app-poc-messages-65df31a804f0-client, property: tls.crt}}
+            - {secretKey: tls.key, remoteRef: {key: sample-app-poc-messages-65df31a804f0-client, property: tls.key}}
+            - {secretKey: ca.crt, remoteRef: {key: sample-app-poc-messages-65df31a804f0-client, property: ca.crt}}
+      - matchRegex: {path: spec.target.template.data.url, pattern: '^postgres://app_sample_app_poc_messages_65df31a804f0_app@'}
+      - matchRegex: {path: spec.target.template.data.url, pattern: 'sslcert=/etc/postgres/tls.crt&sslkey=/etc/postgres/tls.key'}
+      - equal: {path: 'spec.target.template.data["tls.key"]', value: '{{ index . "tls.key" }}'}
+      - notExists: {path: spec.target.immutable}
+
+  - it: gives the runtime reader access only to its own client Secret
+    values: [../examples/managed.yaml]
+    template: templates/credentials/access.yaml
+    documentSelector: {path: kind, value: Role}
+    asserts:
+      - equal: {path: metadata.namespace, value: postgres}
+      - equal:
+          path: rules
+          value: [{apiGroups: [''], resources: [secrets], resourceNames: [sample-app-poc-messages-65df31a804f0-client], verbs: [get]}]
+
+  - it: uses the shared operator client certificate for both ordered migrations
+    values: [../examples/managed.yaml]
+    template: templates/atlas.yaml
+    documentSelector: {path: kind, value: AtlasMigration, matchMany: true}
+    asserts:
+      - hasDocuments: {count: 2, filterAware: true}
+      - notExists: {path: spec.credentials.passwordFrom}
+      - equal: {path: spec.credentials.parameters.sslcert, value: /etc/atlas-postgres/tls.crt}
+      - equal: {path: spec.credentials.parameters.sslkey, value: /etc/atlas-postgres/tls.key}
+      - equal: {path: spec.credentials.parameters.search_path, value: public}
 
   - it: follows an overridden SQL database name for the connection group
     values: [../examples/managed.yaml]
@@ -50,7 +105,7 @@ tests:
     asserts:
       - failedTemplate: {errorPattern: 'database name must differ from its owner, migrator and runtime roles'}
 
-  - it: injects runtime connection and CA only into the database consumer
+  - it: mounts runtime certificate keys with non-root access only into the database consumer
     values: [../examples/managed.yaml]
     documentSelector: {path: "metadata.name", value: api}
     template: templates/deployment.yaml
@@ -63,8 +118,13 @@ tests:
       - contains:
           path: "spec.template.spec.volumes"
           content:
-            name: database-ca
+            name: database-client
           any: true
+      - equal: {path: spec.template.spec.securityContext.fsGroup, value: 65532}
+      - equal: {path: 'spec.template.spec.volumes[2].secret.defaultMode', value: 416}
+      - equal:
+          path: spec.template.spec.volumes[2].secret.items
+          value: [{key: ca.crt, path: ca.crt}, {key: tls.crt, path: tls.crt}, {key: tls.key, path: tls.key}]
 
   - it: keeps the frontend free of database credentials and creates its default route
     values: [../examples/managed.yaml]
@@ -74,6 +134,8 @@ tests:
       - notExists: {path: "spec.template.spec.containers[0].env"}
       - equal: {path: "spec.template.spec.containers[0].readinessProbe.httpGet.path", value: /}
       - equal: {path: "metadata.namespace", value: sample-app}
+      - notExists: {path: spec.template.spec.securityContext.fsGroup}
+      - lengthEqual: {path: spec.template.spec.volumes, count: 2}
 
   - it: isolates another app and supports multiple requested databases
     values: [../examples/managed.yaml]
@@ -119,3 +181,11 @@ tests:
       postgres.roles.unrelated: {}
     asserts:
       - failedTemplate: {errorPattern: 'Use databases intent or advanced postgres'}
+
+  - it: preserves an explicit group for database certificate access
+    values: [../examples/managed.yaml]
+    set: {platform.pod.securityContext.fsGroup: 2000}
+    template: templates/deployment.yaml
+    documentSelector: {path: metadata.name, value: api}
+    asserts:
+      - equal: {path: spec.template.spec.securityContext.fsGroup, value: 2000}

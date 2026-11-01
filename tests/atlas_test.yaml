@@ -364,3 +364,31 @@ tests:
       - equal:
           path: rules[2]
           value: {apiGroups: [''], resources: [secrets], verbs: [create]}
+
+  - it: rejects combining certificate authentication with a password Secret
+    values: [fixtures/postgres.yaml]
+    set:
+      postgres.roles.preview_pr42_app.authentication: certificate
+    asserts:
+      - failedTemplate: {errorPattern: 'certificate role preview_pr42_app requires login and must not set passwordSecret'}
+
+  - it: rejects certificate authentication on a non-login role
+    values: [fixtures/postgres.yaml]
+    set:
+      postgres.roles.preview_pr42_owner.authentication: certificate
+    asserts:
+      - failedTemplate: {errorPattern: 'certificate role preview_pr42_owner requires login and must not set passwordSecret'}
+
+  - it: keeps password Secret variables only for password roles in a mixed release
+    set:
+      namespace: mixed-preview
+      postgres.roles:
+        preview_pr42_app: {login: true, authentication: certificate}
+        preview_pr42_migrator: {login: true, passwordSecret: legacy-migration}
+      platform.atlas.roleScope: [preview_pr42_app, preview_pr42_migrator]
+      platform.atlas.rolePlanRepository: mixed-roles
+    documentSelector: {path: kind, value: AtlasSchema}
+    asserts:
+      - lengthEqual: {path: spec.vars, count: 1}
+      - equal: {path: 'spec.vars[0].key', value: password_preview_pr42_migrator}
+      - notMatchRegex: {path: spec.schema.hcl, pattern: 'password_preview_pr42_app'}

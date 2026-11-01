@@ -26,12 +26,13 @@ databases:
 (configurable through `platform.gateway.defaultComponent`); other components stay
 internal. Health defaults to `/`; app-specific health/readiness paths are meaningful
 app inputs. Images stay digest-pinned. `database: messages` injects DATABASE_URL and
-mounts only the CA into that component; `databaseEnv` can change the variable name.
+mounts its client certificate/key and CA only into that component; `databaseEnv`
+can change the variable name.
 
 Each database request derives isolated SQL/resource names from namespace, release
 and database key. The chart creates a non-login owner, migration/runtime logins,
-stable ESO credentials, named reader access, a CNPG database and separate protected
-access/application migrations. Runtime defaults are SELECT/INSERT on application
+a cert-manager runtime client certificate, named ESO reader access, a CNPG database
+and separate protected access/application migrations. Runtime defaults are SELECT/INSERT on application
 tables in public; metadata stays in private revision schemas. No SQL permissions or
 secret plumbing belongs in the developer values. These defaults are versioned access
 migrations, not automatic permission-drift reconciliation. Keep names/releases stable;
@@ -43,12 +44,41 @@ set `reclaimPolicy: delete` explicitly for disposable data. Do not combine minim
 
 Each database also gets a NOLOGIN connection group with the exact SQL database
 name. Only its migration/runtime logins join it; the group owns no objects and
-receives no SQL privileges. The shared PostgreSQL package uses a TLS/SCRAM
+receives no SQL privileges. The shared PostgreSQL package uses a TLS client-certificate
 `samerole` HBA rule for chart-generated logins, so membership restricts connections
 to their own database even before access migrations run. New applications/PRs
 need no server configuration edits. PostgreSQL's native [samerole rule](https://www.postgresql.org/docs/18/auth-pg-hba-conf.html)
 and the existing per-database SQL grants enforce separate checks. Platform policy
 must be installed before deploying this profile; Helm alone cannot configure HBA.
+
+Minimal database intent uses certificate authentication. The platform supplies the
+namespaced `postgres-client` Issuer and a fixed Atlas client certificate/mount
+through its shared PostgreSQL package. `platform.postgres.clientCertificate`
+configures issuer/lifetime defaults; `platform.atlas.clientCertificate` contains
+native sslcert/sslkey paths for the existing operator mount. Minimal profiles
+produce no password resources/variables and no per-preview Atlas credential copies
+or Deployment edits. Roles and memberships remain Atlas-owned. Certificate requests
+use the generated runtime login as commonName; only that runtime leaf Secret is
+readable by the application's ESO identity. CNPG's current shared server/client CA
+is delivered through the issued Secret's public ca.crt.
+
+ESO refreshes the app copy every minute. The database consumer mounts ca.crt,
+tls.crt and tls.key read-only with 0640 permissions and a default fsGroup 65532;
+explicit pod security settings still override that group. Directory mounts avoid
+subPath pinning during renewal. The frontend receives no database credentials.
+Actual issuance, mounted-key access, renewal and operator readiness must be proved
+in live acceptance. Cleanup must remove the source Certificate and its named Secret
+explicitly; cert-manager does not necessarily garbage-collect Secrets on deletion.
+Upgrading an already-deployed password profile needs reviewed credential ownership
+and orphan-Secret cleanup; do not blindly adopt an existing password Secret.
+
+Advanced `postgres.roles` retains password authentication by default, requiring
+`passwordSecret` for each login. Set `authentication: certificate` to omit its
+password attribute/vars and use the fixed Atlas certificate for its migrations;
+certificate roles require `login: true` and reject `passwordSecret`. The generic
+`platform.credentials.certificates` map accepts native cert-manager Certificate
+specs alongside the existing credential resource maps. No Certificate is rendered
+unless requested; these client certificates are independent of Envoy HTTPS.
 
 ### Argo bootstrap — platform operator
 
