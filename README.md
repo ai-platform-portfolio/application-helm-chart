@@ -117,49 +117,48 @@ forwards the cleanup settings into its child render. Every database must explici
 set `reclaimPolicy: delete`; retained databases and advanced `postgres` ownership
 maps reject this mode. Applications add no cleanup manifests or scripts.
 
-This requires Argo CD with native **PreDelete** support (implementation checked
-against [v3.5.5](https://github.com/argoproj/argo-cd/blob/v3.5.5/controller/hook.go)).
-On Application deletion, its finalizer holds ordinary resource removal until the
-chart's Job stops workloads/drains pods, removes migrations, waits for CNPG's
-database-delete finalizer, reconciles the exact owned role scope to empty and removes
-derived client credentials and inline migration-state Secrets. Role removal retains
-lint/review policy; these flags do not reliably require approval for DROP ROLE.
-The ownership include scope and confirmed database removal are the safety boundary.
-Argo then cascades remaining resources and removes the hook resources.
+Argo deletes normal resources in **reverse sync-wave order**: workloads first,
+then migrations, the CNPG database (through its SQL-deletion finalizer), normal
+Atlas resources/access and finally the application namespace. There is no shell
+coordinator, workload patching, custom polling or cleanup access in the app namespace.
+This uses the native [Application deletion implementation](https://github.com/argoproj/argo-cd/blob/v3.5.5/controller/sort_delete.go),
+checked at the installed Argo v3.5.5. Keep the chart's dependency wave ordering.
 
-The Job runs in the existing Atlas namespace, with no database credentials. Named
-Roles grant get/patch/delete only where needed; Secret access is delete-only for
-derived leaf/copy/state names. Only pod listing is namespace-wide, within the
-exclusive application namespace. Application cleanup access syncs before SQL resources;
-shared-namespace Job/SA/RBAC are created by the deletion hook. A never-provisioned
-application therefore needs no application namespace or successful initial sync.
-An existing Database without its Atlas role resource stops deletion. This supports
-chart-ordered partial deployment and retries, not discovery of orphan SQL objects
-after manual CR removal. Keep namespace, release, database keys and SQL names stable
-for the environment's lifetime; structural renames/ownership adoption require a
-separate migration plan. Do not selectively sync around the ordering dependencies.
+Deleting an AtlasSchema leaves SQL roles behind. After ordinary cascading deletion
+finishes, a **PostDelete AtlasSchema** requests an empty role state with the same
+exact include scope, shared connection, cloud repository and lint/review policy.
+It uses the same spec helper as normal role management. Argo's installed Atlas
+health check waits for current-generation Ready; failed hooks are recreated by
+Argo. The Application's deletion finalizer remains until hooks complete. No
+independent SQL script or second database role owner is added.
 
-API errors, identity/scope mismatches, unfinalized databases or stale Atlas Ready
-conditions cannot release the deletion gate. Each Job has a bounded deadline
-(`timeoutSeconds`, default 900) and three Pod retries; Argo retries failed delete
-hooks. Each new Pod changes an empty-HCL comment to retrigger Atlas after an apply
-failure. A persistent failure leaves the Application terminating: inspect the Job
-and operator conditions, fix the cause and let it retry; do not remove finalizers
-to bypass SQL cleanup. Shared CA/Atlas credentials, services, registry artifacts
-and Terraform state are outside cleanup.
+Atlas migration-state Secrets have native owner references; ESO copies and the
+application namespace also use Kubernetes garbage collection. The source runtime
+client Secrets currently lack certificate owner references. A small PostDelete
+Job therefore calls official, digest-pinned kubectl directly to delete only those
+derived leaf names, with delete-only RBAC. It has no shell, SQL credentials or
+shared-secret reads; UID65532/read-only root and a temporary discovery cache.
+`image` and `timeoutSeconds` (default 900) remain operator settings for this Job.
+The Atlas operator separately receives named get access to its existing shared
+connection and cloud-token Secrets during PostDelete. Shared CA/Atlas credentials,
+services, registry artifacts and Terraform state are preserved.
 
-The digest-pinned `dtzar/helm-kubectl` runtime supplies shell/kubectl/jq; the official
-kubectl image has no shell. This avoids a custom image pipeline, at the cost of
-third-party image maintenance and unused Helm tooling. Its kubectl v1.37 is within
-one minor of the verified v1.36 server; operators must keep image/server versions
-compatible. The Job uses UID65532, a read-only root and writable temporary volume.
-Helm pre-delete annotations prevent the hook Job running during a Helm install;
-the supported lifecycle here is Argo Application deletion, not a raw manifest apply.
+Prerequisites include the existing Atlas entitlement/plan repository, native Argo
+PostDelete and current-generation Atlas health checks. Keep namespace, release,
+database keys and SQL names stable for the environment lifetime; historical SQL
+objects from renamed identities require a separate migration plan. Do not bypass
+CNPG or Application finalizers. A failed/approval-pending cleanup leaves the
+Application terminating for diagnosis and native retry. Role lint/review flags
+are preserved but do not reliably require approval for DROP ROLE.
 
-Helm tests and the shell execution tests validate rendering, ordering and failure
-boundaries without a cluster. The native deletion hook, shared-service preservation
-and real partial-failure/retry acceptance must still be proved live before enabling
-unattended preview deletion. Automatic PR ApplicationSets remain separate work.
+Local PostgreSQL/Atlas proof covers fresh empty desired state, database ownership
+blocking early role removal, three isolated identities, preserved other/shared
+roles and repeated no-op cleanup. These CLI tests plus controller source checks
+are not native live-hook acceptance. Reverse-wave deletion, garbage collection,
+current-generation hook health and partial/in-flight deployment deletion/retry must
+still be proved live before unattended previews. Helm hook annotations prevent
+install-time execution; the supported lifecycle here is Argo Application deletion.
+Automatic PR ApplicationSets remain separate work.
 
 ## Advanced resource configuration
 

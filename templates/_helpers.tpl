@@ -9,27 +9,6 @@ app.kubernetes.io/managed-by: {{ .root.Release.Service | quote }}
 {{- printf "%s-%s" (trimSuffix "-" (trunc 37 $base)) (trunc 12 (sha256sum $base)) -}}
 {{- end -}}
 
-{{/* Shared verbatim with cleanup's atomic ownership-scope test. */}}
-{{- define "application.roleConfig" -}}
-env {{ .Values.platform.atlas.roleEnvironment | toJson }} {
-  include = [
-    {{- range .Values.platform.atlas.roleScope }}
-    {{ printf "%s[type=role|user]" . | toJson }},
-    {{- end }}
-  ]
-  schema {
-    src = "file://schema.hcl"
-    mode {
-      schemas     = false
-      objects     = false
-      roles       = true
-      permissions = false
-      sensitive   = ALLOW
-    }
-  }
-}
-{{- end -}}
-
 {{- define "application.extraContainer" -}}
 {{- $container := mergeOverwrite (dict
   "imagePullPolicy" .root.Values.platform.pod.imagePullPolicy

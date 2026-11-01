@@ -31,70 +31,64 @@ tests:
     asserts:
       - failedTemplate: {errorPattern: 'cleanup requires an exclusive application namespace'}
 
-  - it: refuses ordering that creates SQL before application cleanup access
-    set:
-      platform.lifecycle.cleanup.enabled: true
-      platform.syncWaves.namespace: -10
-    asserts:
-      - failedTemplate: {errorPattern: 'cleanup access must precede Atlas roles'}
-
   - it: refuses orphaning a renamed source credential
     set:
       platform.lifecycle.cleanup.enabled: true
       databases.messages.reclaimPolicy: delete
       platform.credentials.certificates.sample-app-poc-messages-65df31a804f0-client.spec.secretName: another-secret
     asserts:
-      - failedTemplate: {errorPattern: 'cleanup requires the generated certificate and connection resource names/namespaces'}
+      - failedTemplate: {errorPattern: 'cleanup requires the generated certificate resource and Secret names/namespaces'}
 
-  - it: runs the bounded native deletion Job outside the application namespace without database secrets
+  - it: deletes only source client Secrets with native kubectl and no shell or SQL credentials
     set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
     template: templates/lifecycle/cleanup.yaml
     documentSelector: {path: kind, value: Job}
     asserts:
-      - equal: {path: metadata.namespace, value: atlas-system}
-      - equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PreDelete}
+      - equal: {path: metadata.namespace, value: postgres}
+      - equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PostDelete}
       - equal: {path: spec.activeDeadlineSeconds, value: 900}
       - equal: {path: spec.backoffLimit, value: 3}
-      - equal: {path: spec.template.spec.restartPolicy, value: Never}
       - equal: {path: spec.template.spec.securityContext.runAsUser, value: 65532}
       - equal: {path: 'spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem', value: true}
-      - notExists: {path: 'spec.template.spec.containers[0].envFrom'}
+      - equal:
+          path: 'spec.template.spec.containers[0].args'
+          value: [delete, secrets, --namespace, postgres, --ignore-not-found, --wait=false, --cache-dir=/tmp, sample-app-poc-messages-65df31a804f0-client]
+      - notExists: {path: 'spec.template.spec.containers[0].command'}
+      - notExists: {path: 'spec.template.spec.containers[0].env'}
       - equal: {path: spec.template.spec.volumes, value: [{name: tmp, emptyDir: {}}]}
 
-  - it: grants only named SQL and credential deletion with no shared secret reads
+  - it: grants the Secret Job deletion only for its named source leaves
     set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
     template: templates/lifecycle/cleanup.yaml
-    documentSelector: {path: 'rules[0].resources[0]', value: databases}
+    documentSelector: {path: 'rules[0].verbs[0]', value: delete}
     asserts:
+      - equal: {path: metadata.namespace, value: postgres}
       - equal:
           path: rules
-          value:
-            - {apiGroups: [postgresql.cnpg.io], resources: [databases], resourceNames: [sample-app-poc-messages-65df31a804f0], verbs: [get, delete]}
-            - {apiGroups: [cert-manager.io], resources: [certificates], resourceNames: [sample-app-poc-messages-65df31a804f0-client], verbs: [get, delete]}
-            - {apiGroups: [''], resources: [secrets], resourceNames: [sample-app-poc-messages-65df31a804f0-client], verbs: [delete]}
+          value: [{apiGroups: [''], resources: [secrets], resourceNames: [sample-app-poc-messages-65df31a804f0-client], verbs: [delete]}]
 
-  - it: cannot create schemas or read shared Atlas credentials
+  - it: grants Atlas only its existing shared connection and cloud token reads
     set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
     template: templates/lifecycle/cleanup.yaml
-    documentSelector: {path: 'rules[0].resources[0]', value: atlasschemas}
+    documentSelector: {path: 'rules[0].verbs[0]', value: get}
     asserts:
+      - equal: {path: metadata.namespace, value: atlas-system}
       - equal:
           path: rules
-          value:
-            - {apiGroups: [db.atlasgo.io], resources: [atlasschemas], resourceNames: [sample-app-poc-roles-747835aca5d2], verbs: [get, patch]}
-            - {apiGroups: [db.atlasgo.io], resources: [atlasmigrations], resourceNames: [sample-app-poc-messages-65df31a804f0, sample-app-poc-messages-access-c7b63231604c], verbs: [get, delete]}
-            - {apiGroups: [''], resources: [secrets], resourceNames: [io.atlasgo.db.v1.sample-app-poc-messages-access-c7b63231604c.latest], verbs: [delete]}
+          value: [{apiGroups: [''], resources: [secrets], resourceNames: [atlas-postgres, atlas-token-secret], verbs: [get]}]
 
-  - it: creates application access before SQL instead of requiring a successful deployment
+  - it: asks Atlas for an empty scoped role state after normal resources are deleted
     set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
     template: templates/lifecycle/cleanup.yaml
-    documentSelector: {path: 'rules[0].resources[0]', value: deployments}
+    documentSelector: {path: kind, value: AtlasSchema}
     asserts:
-      - equal: {path: metadata.namespace, value: sample-app}
-      - equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '-39'}
-      - notExists: {path: 'metadata.annotations["argocd.argoproj.io/hook"]'}
-      - equal: {path: 'rules[0].resourceNames', value: [api, web]}
-      - equal: {path: 'rules[0].verbs', value: [get, patch]}
+      - equal: {path: metadata.namespace, value: atlas-system}
+      - equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PostDelete}
+      - equal: {path: spec.schema.hcl, value: "// Empty desired role state; keep the exact ownership include scope above.\n"}
+      - equal: {path: spec.policy.lint, value: {review: ERROR, destructive: {error: true}}}
+      - equal: {path: spec.urlFrom.secretKeyRef, value: {name: atlas-postgres, key: url}}
+      - notExists: {path: spec.vars}
+      - matchRegex: {path: spec.config, pattern: '"app_sample_app_poc_messages_65df31a804f0_owner\[type=role\|user\]"'}
 
   - it: forwards cleanup settings into the child and enables cascade only with cleanup
     set:
@@ -110,19 +104,16 @@ tests:
       - equal: {path: 'spec.sources[0].helm.valuesObject.platform.lifecycle.cleanup.enabled', value: true}
       - equal: {path: 'spec.sources[0].helm.valuesObject.platform.argocd.enabled', value: false}
 
-  - it: isolates a second app with multiple databases and both workload kinds
+  - it: isolates role cleanup for a second app with multiple databases
     set:
       name: other-app
       namespace: other-app
       platform.lifecycle.cleanup.enabled: true
       databases.messages.reclaimPolicy: delete
       databases.audit.reclaimPolicy: delete
-      components.api.delivery: rollout
     template: templates/lifecycle/cleanup.yaml
-    documentSelector: {path: kind, value: Job}
+    documentSelector: {path: kind, value: AtlasSchema}
     asserts:
-      - notMatchRegex: {path: 'spec.template.spec.containers[0].env[1].value', pattern: sample-app}
-      - matchRegex: {path: 'spec.template.spec.containers[0].env[1].value', pattern: 'other-app-poc-audit-[a-f0-9]{12}'}
-      - matchRegex: {path: 'spec.template.spec.containers[0].env[1].value', pattern: 'other-app-poc-messages-[a-f0-9]{12}'}
-      - matchRegex: {path: 'spec.template.spec.containers[0].env[1].value', pattern: '"api":"rollouts.argoproj.io"'}
-      - matchRegex: {path: 'spec.template.spec.containers[0].env[1].value', pattern: '"web":"deployments.apps"'}
+      - notMatchRegex: {path: spec.config, pattern: sample_app}
+      - matchRegex: {path: spec.config, pattern: 'app_other_app_poc_audit_[a-f0-9]{12}'}
+      - matchRegex: {path: spec.config, pattern: 'app_other_app_poc_messages_[a-f0-9]{12}'}

@@ -9,131 +9,111 @@
 {{- if has .Values.namespace (list $atlas.namespace $pg.namespace .Values.platform.argocd.namespace "default" "kube-system" "kube-public" "kube-node-lease") }}
 {{- fail "cleanup requires an exclusive application namespace, separate from shared services" }}
 {{- end }}
-{{- $wave := add1 .Values.platform.syncWaves.namespace }}
-{{- range $kind := list "atlasSchema" "database" "deployment" "rollout" }}
-{{- if ge (int $wave) (int (index $.Values.platform.syncWaves $kind)) }}
-{{- fail "cleanup access must precede Atlas roles, databases and workloads in sync waves" }}
-{{- end }}
-{{- end }}
-{{- $name := include "application.resourceName" (dict "root" . "name" "cleanup") }}
-{{- $schema := include "application.resourceName" (dict "root" . "name" "roles") }}
-{{- $databases := dict }}
 {{- $clients := list }}
-{{- $connections := list }}
 {{- range $key, $database := .Values.postgres.databases }}
 {{- if ne (default $pg.databaseReclaimPolicy $database.reclaimPolicy) "delete" }}
 {{- fail (printf "cleanup requires reclaimPolicy: delete for database %s" $key) }}
 {{- end }}
-{{- $base := include "application.resourceName" (dict "root" $ "name" $key) }}
-{{- $_ := set $databases $base (dict "name" $database.name "owner" $database.owner "cluster" (dict "name" $pg.cluster) "databaseReclaimPolicy" "delete") }}
-{{- $client := printf "%s-client" $base }}
-{{- $connection := printf "%s-connection" $base }}
+{{- $client := printf "%s-client" (include "application.resourceName" (dict "root" $ "name" $key)) }}
 {{- $certificate := index $.Values.platform.credentials.certificates $client }}
-{{- $external := index $.Values.platform.credentials.externalSecrets $connection }}
-{{- if or (ne $certificate.spec.secretName $client) (ne $certificate.metadata.namespace $pg.namespace) (ne (default $client $certificate.metadata.name) $client) (ne $external.spec.target.name $connection) (ne $external.metadata.namespace $.Values.namespace) (ne (default $connection $external.metadata.name) $connection) }}
-{{- fail "cleanup requires the generated certificate and connection resource names/namespaces" }}
+{{- if or (ne $certificate.spec.secretName $client) (ne $certificate.metadata.namespace $pg.namespace) (ne (default $client $certificate.metadata.name) $client) }}
+{{- fail "cleanup requires the generated certificate resource and Secret names/namespaces" }}
 {{- end }}
 {{- $clients = append $clients $client }}
-{{- $connections = append $connections $connection }}
 {{- end }}
-{{- $migrations := list }}
-{{- $states := list }}
-{{- range $key, $migration := .Values.postgres.migrations }}
-{{- $resource := include "application.resourceName" (dict "root" $ "name" $key) }}
-{{- $migrations = append $migrations $resource }}
-{{- if $migration.local }}{{- $states = append $states (printf "io.atlasgo.db.v1.%s.latest" $resource) }}{{- end }}
-{{- end }}
-{{- $workloads := dict }}
-{{- $deployments := list }}
-{{- $rollouts := list }}
-{{- range $key, $component := .Values.components }}
-{{- $kind := "deployments.apps" }}
-{{- if eq $component.delivery "rollout" }}
-{{- $kind = "rollouts.argoproj.io" }}
-{{- $rollouts = append $rollouts $key }}
-{{- else }}
-{{- $deployments = append $deployments $key }}
-{{- end }}
-{{- $_ := set $workloads $key $kind }}
-{{- end }}
-{{- $permissions := dict
-  "atlas" (dict "namespace" $atlas.namespace "hook" true "rules" (list
-    (dict "apiGroups" (list "db.atlasgo.io") "resources" (list "atlasschemas") "resourceNames" (list $schema) "verbs" (list "get" "patch"))
-    (dict "apiGroups" (list "db.atlasgo.io") "resources" (list "atlasmigrations") "resourceNames" $migrations "verbs" (list "get" "delete"))
-    (dict "apiGroups" (list "") "resources" (list "secrets") "resourceNames" $states "verbs" (list "delete"))))
-  "postgres" (dict "namespace" $pg.namespace "hook" true "rules" (list
-    (dict "apiGroups" (list "postgresql.cnpg.io") "resources" (list "databases") "resourceNames" (keys $databases | sortAlpha) "verbs" (list "get" "delete"))
-    (dict "apiGroups" (list "cert-manager.io") "resources" (list "certificates") "resourceNames" $clients "verbs" (list "get" "delete"))
-    (dict "apiGroups" (list "") "resources" (list "secrets") "resourceNames" $clients "verbs" (list "delete"))))
-  "application" (dict "namespace" .Values.namespace "hook" false "rules" (list
-    (dict "apiGroups" (list "apps") "resources" (list "deployments") "resourceNames" $deployments "verbs" (list "get" "patch"))
-    (dict "apiGroups" (list "argoproj.io") "resources" (list "rollouts") "resourceNames" $rollouts "verbs" (list "get" "patch"))
-    (dict "apiGroups" (list "external-secrets.io") "resources" (list "externalsecrets") "resourceNames" $connections "verbs" (list "get" "delete"))
-    (dict "apiGroups" (list "") "resources" (list "secrets") "resourceNames" $connections "verbs" (list "delete")))) }}
-{{- range $key, $access := $permissions }}
+{{- $name := include "application.resourceName" (dict "root" . "name" "cleanup") }}
+{{- $empty := deepCopy . }}
+{{- $_ := set $empty.Values.postgres "roles" dict }}
+# Reverse-wave deletion finishes first. The normal Atlas resource is removed
+# before Argo creates this empty desired state.
+apiVersion: db.atlasgo.io/v1alpha1
+kind: AtlasSchema
+metadata:
+  name: {{ $name }}
+  namespace: {{ $atlas.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+{{ include "application.roleSchemaSpec" $empty }}
+
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ $name }}-{{ $key }}
-  namespace: {{ $access.namespace | quote }}
+  name: {{ $name }}
+  namespace: {{ $atlas.namespace | quote }}
   annotations:
-    {{- if $access.hook }}
-    argocd.argoproj.io/hook: PreDelete
-    helm.sh/hook: pre-delete
-    {{- else }}
-    argocd.argoproj.io/sync-wave: {{ $wave | quote }}
-    {{- end }}
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
 rules:
-  {{- range $access.rules }}
-  {{- if .resourceNames }}
-  - {{ toYaml . | nindent 4 | trim }}
-  {{- end }}
-  {{- end }}
-  {{- if and (eq $key "application") $workloads }}
-  # Pod listing is namespace-wide; the script selects this release and component.
   - apiGroups: ['']
-    resources: [pods]
-    verbs: [list]
-  {{- end }}
+    resources: [secrets]
+    resourceNames: {{ list $atlas.cloudTokenSecret $atlas.roleConnectionSecret | uniq | sortAlpha | toJson }}
+    verbs: [get]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ $name }}-{{ $key }}
-  namespace: {{ $access.namespace | quote }}
+  name: {{ $name }}
+  namespace: {{ $atlas.namespace | quote }}
   annotations:
-    {{- if $access.hook }}
-    argocd.argoproj.io/hook: PreDelete
-    helm.sh/hook: pre-delete
-    {{- else }}
-    argocd.argoproj.io/sync-wave: {{ $wave | quote }}
-    {{- end }}
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}-{{ $key }}}
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}}
 subjects:
-  - {kind: ServiceAccount, name: {{ $name }}, namespace: {{ $atlas.namespace | quote }}}
+  - {kind: ServiceAccount, name: {{ $atlas.serviceAccount | quote }}, namespace: {{ $atlas.namespace | quote }}}
 
 ---
-{{- end }}
+# Source leaf Secrets currently lack owner references. ESO copies and Atlas
+# migration state use native garbage collection; only source leaves need a Job.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ $name }}
-  namespace: {{ $atlas.namespace | quote }}
+  namespace: {{ $pg.namespace | quote }}
   annotations:
-    argocd.argoproj.io/hook: PreDelete
-    helm.sh/hook: pre-delete
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
 automountServiceAccountToken: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-clients
+  namespace: {{ $pg.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: {{ $clients | toJson }}
+    verbs: [delete]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-clients
+  namespace: {{ $pg.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}-clients}
+subjects:
+  - {kind: ServiceAccount, name: {{ $name }}, namespace: {{ $pg.namespace | quote }}}
 
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ $name }}
-  namespace: {{ $atlas.namespace | quote }}
+  namespace: {{ $pg.namespace | quote }}
   annotations:
-    argocd.argoproj.io/hook: PreDelete
-    helm.sh/hook: pre-delete
+    argocd.argoproj.io/hook: PostDelete
+    helm.sh/hook: post-delete
 spec:
   activeDeadlineSeconds: {{ $cleanup.timeoutSeconds }}
   backoffLimit: 3
@@ -146,23 +126,11 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
-        fsGroup: 65532
         seccompProfile: {type: RuntimeDefault}
       containers:
-        - name: cleanup
+        - name: delete-client-secrets
           image: {{ $cleanup.image | quote }}
-          command: [/bin/sh, -ec]
-          args:
-            - |
-              {{- .Files.Get "files/lifecycle/cleanup.sh" | nindent 14 }}
-          env:
-            - name: HOME
-              value: /tmp
-            - name: CLEANUP_CONFIG
-              value: {{ dict "namespace" .Values.namespace "release" .Release.Name "atlasNamespace" $atlas.namespace "postgresNamespace" $pg.namespace "schema" $schema "roleConfig" (printf "%s\n" (include "application.roleConfig" .)) "roleEnvironment" $atlas.roleEnvironment "roleConnection" (dict "secretKeyRef" (dict "name" $atlas.roleConnectionSecret "key" $atlas.connectionKey)) "databases" $databases "migrations" $migrations "states" $states "clients" $clients "connections" $connections "workloads" $workloads | toJson | quote }}
-            - name: CLEANUP_ATTEMPT
-              valueFrom:
-                fieldRef: {fieldPath: metadata.uid}
+          args: {{ concat (list "delete" "secrets" "--namespace" $pg.namespace "--ignore-not-found" "--wait=false" "--cache-dir=/tmp") $clients | toJson }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
