@@ -1,0 +1,36 @@
+{{- $test := .Values.platform.tests.playwright -}}
+{{- if $test.enabled -}}
+{{- $name := required "name is required for Playwright" .Values.name -}}
+{{- $host := required "hostname is required for Playwright" .Values.hostname -}}
+{{- $repository := required "platform.release.check.repository is required for Playwright" .Values.platform.release.check.repository -}}
+{{- $revision := required "platform.release.expectedRevision is required for Playwright" .Values.platform.release.expectedRevision -}}
+{{- if not (regexMatch "^[a-f0-9]{40}$" $revision) -}}{{- fail "Playwright requires a full source commit SHA" -}}{{- end -}}
+apiVersion: testworkflows.testkube.io/v1
+kind: TestWorkflow
+metadata:
+  name: {{ $name | quote }}
+  namespace: testkube
+  labels:
+    app.kubernetes.io/part-of: {{ $name | quote }}
+spec:
+  job:
+    activeDeadlineSeconds: {{ $test.timeoutSeconds }}
+  content:
+    git:
+      uri: {{ printf "https://github.com/%s.git" $repository | quote }}
+      revision: {{ $revision | quote }}
+      paths: [{{ $test.path | quote }}]
+  container:
+    image: {{ $test.image | quote }}
+    workingDir: {{ printf "/data/repo/%s" $test.path | quote }}
+    env:
+      - name: PREVIEW_URL
+        value: {{ printf "https://%s" $host | quote }}
+  steps:
+    - name: Install browser test dependencies
+      shell: npm ci --ignore-scripts --no-audit --no-fund
+    - name: Verify deployed application
+      shell: npx playwright test
+      artifacts:
+        paths: [playwright-report/**/*, test-results/**/*]
+{{- end }}
