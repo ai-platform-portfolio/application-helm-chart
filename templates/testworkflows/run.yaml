@@ -1,0 +1,121 @@
+{{- $test := .Values.platform.tests.playwright -}}
+{{- if $test.enabled -}}
+{{- $name := required "name is required for Playwright" .Values.name -}}
+{{- $namespace := required "namespace is required for Playwright" .Values.namespace -}}
+{{- $revision := required "platform.release.expectedRevision is required for Playwright" .Values.platform.release.expectedRevision -}}
+{{- $images := dict -}}
+{{- range $component, $config := .Values.components -}}
+{{- $image := required (printf "component %s needs an image for Playwright verification" $component) $config.image -}}
+{{- if not (regexMatch "@sha256:[0-9a-f]{64}$" $image) -}}{{- fail (printf "component %s needs a digest-pinned image for Playwright verification" $component) -}}{{- end -}}
+{{- $_ := set $images $component $image -}}
+{{- end -}}
+{{- if not $images -}}{{- fail "Playwright verification requires at least one component" -}}{{- end -}}
+{{- $verifier := include "application.resourceName" (dict "root" . "name" "playwright-verify") -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $verifier }}
+  namespace: {{ $namespace | quote }}
+automountServiceAccountToken: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $verifier }}
+  namespace: {{ $namespace | quote }}
+rules:
+  - apiGroups: ['']
+    resources: [pods]
+    verbs: [list]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $verifier }}
+  namespace: {{ $namespace | quote }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $verifier }}}
+subjects:
+  - {kind: ServiceAccount, name: {{ $verifier }}, namespace: {{ $namespace | quote }}}
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "application.resourceName" (dict "root" . "name" "playwright-run") }}
+  namespace: {{ $namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: {{ add $test.timeoutSeconds 60 }}
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        gitops.platform/testkube-client: 'true'
+    spec:
+      serviceAccountName: {{ $verifier }}
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: verify-images
+          image: {{ .Values.platform.release.check.image | quote }}
+          command:
+            - python3
+            - -c
+            - |
+{{ .Files.Get "files/testworkflows/verify-pods.py" | indent 14 }}
+          env:
+            - {name: NAMESPACE, value: {{ $namespace | quote }}}
+            - {name: INSTANCE, value: {{ .Release.Name | quote }}}
+            - {name: EXPECTED_IMAGES, value: {{ $images | toJson | quote }}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+          volumeMounts:
+            - {name: kubernetes, mountPath: /var/run/kubernetes, readOnly: true}
+      containers:
+        - name: testkube
+          image: docker.io/kubeshop/testkube-cli:2.14.2@sha256:1ee9228907b31d6fb901b0683237797aa107ed73915504ac8a547de01681f9b7
+          args:
+            - --client=direct
+            - --api-uri=http://testkube-api-server.testkube.svc.cluster.local:8088
+            - run
+            - testworkflow
+            - {{ $name | quote }}
+            - --tag
+            - {{ printf "source-sha=%s" $revision | quote }}
+            - --watch
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - name: kubernetes
+          projected:
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 600}
+              - configMap:
+                  name: kube-root-ca.crt
+                  items: [{key: ca.crt, path: ca.crt}]
+{{- end }}

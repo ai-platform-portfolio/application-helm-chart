@@ -1,0 +1,55 @@
+suite: automatic deployed Playwright execution
+
+templates:
+  - templates/testworkflows/run.yaml
+
+tests:
+  - it: omits the runner by default
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: runs the exact workflow after healthy sync and fails the sync on test failure
+    set:
+      name: orders-pr-42
+      namespace: orders-pr-42
+      platform.tests.playwright.enabled: true
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      components.web.image: 'registry.example/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      components.web.port: 8080
+    asserts:
+      - hasDocuments: {count: 4}
+      - documentIndex: 1
+        equal: {path: 'rules[0].verbs', value: [list]}
+      - documentIndex: 3
+        equal: {path: metadata.namespace, value: orders-pr-42}
+      - documentIndex: 3
+        equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PostSync}
+      - documentIndex: 3
+        equal: {path: spec.activeDeadlineSeconds, value: 960}
+      - documentIndex: 3
+        equal: {path: spec.backoffLimit, value: 0}
+      - documentIndex: 3
+        equal: {path: 'spec.template.spec.initContainers[0].name', value: verify-images}
+      - documentIndex: 3
+        isNotEmpty: {path: spec.template.spec.serviceAccountName}
+      - equal:
+          path: 'spec.template.metadata.labels["gitops.platform/testkube-client"]'
+          value: 'true'
+        documentIndex: 3
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: source-sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        documentIndex: 3
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --watch
+        documentIndex: 3
+
+  - it: requires a running component to verify before scheduling a browser check
+    set:
+      name: orders-pr-42
+      namespace: orders-pr-42
+      platform.tests.playwright.enabled: true
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - failedTemplate: {errorMessage: 'Playwright verification requires at least one component'}

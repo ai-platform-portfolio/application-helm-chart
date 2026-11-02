@@ -3,7 +3,11 @@
 {{- range .Values.platform.credentials }}
 {{- if . }}{{- $credentials = true }}{{- end }}
 {{- end }}
-{{- if or $credentials .Values.components .Values.hosts .Values.platform.azure.identities .Values.platform.azure.storageContainers .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations .Values.platform.atlas.roleScope }}
+{{- if or $credentials .Values.components .Values.hosts .Values.platform.azure.identities .Values.platform.azure.storageContainers .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations .Values.platform.atlas.roleScope .Values.platform.tests.playwright.enabled }}
+{{- $labels := deepCopy .Values.platform.namespaceLabels -}}
+{{- if .Values.platform.tests.playwright.enabled -}}
+{{- $_ := set $labels "gitops.platform/testkube-client" "true" -}}
+{{- end -}}
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -13,5 +17,5 @@ metadata:
     argocd.argoproj.io/sync-wave: {{ index .Values.platform.syncWaves "namespace" | quote }}
   {{- end }}
   labels:
-    {{- toYaml .Values.platform.namespaceLabels | nindent 4 }}
+    {{- toYaml $labels | nindent 4 }}
 {{- end }}
