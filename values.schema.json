@@ -55,6 +55,12 @@
     "platform": {
       "type": "object",
       "properties": {
+        "release": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"}
+          }
+        },
         "gateway": {
           "type": "object",
           "properties": {

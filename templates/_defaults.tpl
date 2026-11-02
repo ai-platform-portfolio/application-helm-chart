@@ -1,6 +1,9 @@
 {{/* Resolve developer intent once per render; legacy resource maps remain supported. */}}
 {{- define "application.defaults" -}}
 {{- if not (get .Values "_applicationResolved") -}}
+{{- if and .Values.platform.release.expectedRevision (ne .Values.platform.release.expectedRevision (default "" .Chart.AppVersion)) -}}
+{{- fail "Packaged chart appVersion must match platform.release.expectedRevision" -}}
+{{- end -}}
 {{- $_ := set .Values "_applicationResolved" true -}}
 {{- $_ := set .Values "name" (default .Values.namespace .Values.name) -}}
 {{- $_ := set .Values "namespace" (default .Values.name .Values.namespace) -}}

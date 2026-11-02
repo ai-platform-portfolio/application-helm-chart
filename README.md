@@ -109,6 +109,26 @@ The operator can inspect rendered Database/migration resources for the exact SQL
 names to authorize. Templates and unit tests do not prove live SQL/application
 acceptance. Existing database/role ownership is not adopted.
 
+### Packaged release source — delivery automation
+
+Set `platform.release.expectedRevision` to the full source commit SHA expected by
+the delivery controller. The chart rejects rendering unless its packaged
+`Chart.appVersion` matches; missing provenance also fails. The existing shared
+publisher records the application source SHA as `appVersion` when packaging.
+For example:
+
+```yaml
+platform:
+  release:
+    expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```
+
+Delivery automation supplies this value from the current source revision; developers
+do not maintain it. Empty is the backward-compatible default and disables the
+check. The comparison checks source identity only: it does not verify successful
+CI completion, artifact integrity or PR trust. Those remain separate delivery gates.
+This adds no ApplicationSet or runtime check and does not deploy a release.
+
 ### Disposable cleanup — platform operator
 
 > [!WARNING]
