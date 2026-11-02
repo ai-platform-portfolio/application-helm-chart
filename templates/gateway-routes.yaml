@@ -1,5 +1,6 @@
 {{- include "application.defaults" . -}}
 # ListenerSet
+{{- if not .Values.platform.gateway.sharedListener }}
 {{- range $name, $host := .Values.hosts }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: ListenerSet
@@ -31,6 +32,7 @@ spec:
           from: {{ $.Values.platform.gateway.listener.allowedRoutesFrom }}
 ---
 {{- end }}
+{{- end }}
 
 # HTTPRoute
 {{- range $name, $component := .Values.components }}
@@ -50,9 +52,16 @@ spec:
     - {{ $host.hostname | quote }}
   parentRefs:
     - group: gateway.networking.k8s.io
+      {{- if $.Values.platform.gateway.sharedListener }}
+      kind: Gateway
+      name: {{ required "platform.gateway.name is required for shared listener routing" $.Values.platform.gateway.name | quote }}
+      namespace: {{ required "platform.gateway.namespace is required for shared listener routing" $.Values.platform.gateway.namespace | quote }}
+      sectionName: {{ $.Values.platform.gateway.sharedListener | quote }}
+      {{- else }}
       kind: ListenerSet
       name: {{ $component.route.host }}
       sectionName: {{ $.Values.platform.gateway.listener.name }}
+      {{- end }}
   rules:
     - matches:
         - path:

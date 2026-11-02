@@ -379,3 +379,150 @@ tests:
           kind: HTTPRoute
           apiVersion: gateway.networking.k8s.io/v1
         not: true
+
+  - it: 'Shared listener: routes every component and host through the configured Gateway'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+      - fixtures/extra.yaml
+    set:
+      platform.gateway.name: shared-edge
+      platform.gateway.namespace: edge-system
+      platform.gateway.sharedListener: preview-https
+      platform.gateway.httpRedirect.enabled: false
+
+    asserts:
+      - hasDocuments:
+          count: 3
+          filterAware: true
+
+      - equal:
+          path: spec.parentRefs
+          value:
+            - group: gateway.networking.k8s.io
+              kind: Gateway
+              name: shared-edge
+              namespace: edge-system
+              sectionName: preview-https
+
+      - equal:
+          path: spec.hostnames
+          value: [internal.preview.example.com]
+        documentSelector:
+          path: metadata.name
+          value: processor
+
+      - equal:
+          path: spec.rules[0].backendRefs
+          value:
+            - name: backend-stable
+              port: 8000
+              weight: 100
+            - name: backend-canary
+              port: 8000
+              weight: 0
+        documentSelector:
+          path: metadata.name
+          value: backend
+    documentSelector:
+      path: kind
+      value: HTTPRoute
+      matchMany: true
+
+  - it: 'Shared listener: does not request per-host listeners or certificates'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.gateway.sharedListener: preview-https
+
+    asserts:
+      - containsDocument:
+          kind: ListenerSet
+          apiVersion: gateway.networking.k8s.io/v1
+        not: true
+
+      - containsDocument:
+          kind: Certificate
+          apiVersion: cert-manager.io/v1
+        not: true
+
+      - notExists:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+
+  - it: 'Shared listener: keeps HTTP redirects on the separate HTTP listener'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.gateway.sharedListener: preview-https
+
+    asserts:
+      - equal:
+          path: spec.parentRefs
+          value:
+            - name: public
+              namespace: envoy-gateway-system
+              sectionName: http
+
+      - equal:
+          path: spec.rules[0].filters[0].requestRedirect.scheme
+          value: https
+    documentSelector:
+      path: metadata.name
+      value: public-redirect
+
+  - it: 'Shared listener: supports another app without example component or namespace names'
+    set:
+      name: other-pr-7
+      hostname: other-pr-7.preview.example.test
+      components:
+        web:
+          image: example.invalid/web@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          port: 8080
+      platform.gateway.sharedListener: shared-tls
+      platform.gateway.httpRedirect.enabled: false
+
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: other-pr-7
+
+      - equal:
+          path: spec.hostnames
+          value: [other-pr-7.preview.example.test]
+
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: shared-tls
+    documentSelector:
+      path: metadata.name
+      value: web
+
+  - it: 'Shared listener: rejects a malformed listener name'
+    set:
+      platform.gateway.sharedListener: invalid/listener
+
+    asserts:
+      - failedTemplate:
+          errorPattern: sharedListener
+
+  - it: 'Shared listener: rejects a non-string listener value'
+    set:
+      platform.gateway.sharedListener: true
+
+    asserts:
+      - failedTemplate:
+          errorPattern: sharedListener
+
+  - it: 'Shared listener: requires a Gateway namespace rather than silently using the app namespace'
+    values:
+      - ../examples/application.yaml
+      - ../examples/preview.yaml
+    set:
+      platform.gateway.sharedListener: preview-https
+      platform.gateway.namespace: ''
+
+    asserts:
+      - failedTemplate:
+          errorMessage: platform.gateway.namespace is required for shared listener routing
