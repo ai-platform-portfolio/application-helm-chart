@@ -14,6 +14,8 @@ tests:
       platform.argocd.previews.enabled: true
     asserts:
       - equal: {path: kind, value: ApplicationSet}
+      - equal: {path: 'metadata.labels["platform.ai-platform-portfolio/preview"]', value: 'true'}
+      - equal: {path: 'spec.template.metadata.labels["platform.ai-platform-portfolio/preview"]', value: 'true'}
       - matchRegex: {path: metadata.name, pattern: '^orders-[a-f0-9]{12}-previews$'}
       - equal: {path: 'spec.generators[0].pullRequest.github.owner', value: example}
       - equal: {path: 'spec.generators[0].pullRequest.github.repo', value: orders}

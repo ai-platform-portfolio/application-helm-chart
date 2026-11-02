@@ -16,6 +16,8 @@ kind: ApplicationSet
 metadata:
   name: {{ printf "%s-previews" $base }}
   namespace: {{ $argo.namespace | quote }}
+  labels:
+    platform.ai-platform-portfolio/preview: "true"
 spec:
   goTemplate: true
   goTemplateOptions: [missingkey=error]
@@ -32,6 +34,8 @@ spec:
   template:
     metadata:
       name: {{ $name | quote }}
+      labels:
+        platform.ai-platform-portfolio/preview: "true"
       finalizers: [resources-finalizer.argocd.argoproj.io]
     spec:
       project: {{ $argo.project | quote }}
