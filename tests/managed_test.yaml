@@ -4,6 +4,44 @@ release:
   name: poc
 
 tests:
+  - it: accepts a release packaged from the expected source revision
+    template: templates/namespace.yaml
+    chart:
+      appVersion: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    set:
+      namespace: release-test
+      components.web: {image: 'example.test/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', port: 8080}
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - equal: {path: metadata.name, value: release-test}
+
+  - it: rejects a release packaged from a different source revision
+    chart:
+      appVersion: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    set:
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - failedTemplate: {errorMessage: 'Packaged chart appVersion must match platform.release.expectedRevision'}
+
+  - it: rejects a release without its packaged source revision
+    chart:
+      appVersion: ""
+    set:
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - failedTemplate: {errorMessage: 'Packaged chart appVersion must match platform.release.expectedRevision'}
+
+  - it: preserves existing consumers when the expected revision is empty
+    template: templates/namespace.yaml
+    chart:
+      appVersion: unrelated-version
+    set:
+      namespace: release-test
+      components.web: {image: 'example.test/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', port: 8080}
+      platform.release.expectedRevision: ""
+    asserts:
+      - equal: {path: metadata.name, value: release-test}
+
   - it: derives database ownership and a restricted credential connection from minimal intent
     values: [../examples/managed.yaml]
     documentSelector: {path: "kind", value: Database}

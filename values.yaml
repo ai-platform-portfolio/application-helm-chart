@@ -17,6 +17,10 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  release:
+    # Delivery automation supplies the expected source SHA; empty disables the check.
+    expectedRevision: ""
+
   lifecycle:
     cleanup:
       enabled: false
