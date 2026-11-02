@@ -112,6 +112,8 @@ platform:
     defaultComponent: web
     name: public
     namespace: envoy-gateway-system
+    # Empty creates per-host ListenerSets; set to an existing shared HTTPS listener.
+    sharedListener: ""
     clusterIssuer: letsencrypt-azuredns
     pathMatchType: PathPrefix
     listener:

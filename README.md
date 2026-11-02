@@ -179,7 +179,7 @@ Automatic PR ApplicationSets remain separate work.
 This chart lets an application describe its workloads without writing Kubernetes
 manifests. Each entry in `components` creates a Deployment or Argo Rollout and
 its Services. A component with a `route` also gets an HTTPS HTTPRoute. Each entry in
-`hosts` creates an HTTPS ListenerSet and certificate request.
+`hosts` creates an HTTPS ListenerSet and certificate request by default.
 The chart creates the application Namespace. Maps support any number of
 components and hosts.
 
@@ -233,7 +233,34 @@ functions; `_pod.tpl` assembles the pod from those defaults. The optional
 redirect route per host. Set it to `false` only when the platform supplies the
 redirect elsewhere. Redirects attach to the Gateway's HTTP listener; application
 routes attach to the ListenerSet's HTTPS listener. Each host uses an exact
-hostname and its own certificate; the values schema rejects wildcard hosts.
+hostname and its own certificate by default; the values schema rejects wildcard hosts.
+
+For preview environments, the platform can select an existing shared HTTPS listener:
+
+```yaml
+platform:
+  gateway:
+    sharedListener: preview-https
+```
+
+The listener name is a platform setting; developers still supply only their exact
+application hostname and component intent. `gateway.name` and `gateway.namespace`
+select the shared Gateway using their existing defaults/overrides. With
+`sharedListener` set, application HTTPRoutes attach directly to that Gateway and
+listener; this chart emits no per-host ListenerSets or public certificate requests.
+HTTP redirects still use the independently configured HTTP listener. Empty
+`sharedListener` preserves the existing per-host behavior.
+
+The GitOps Gateway package must separately provision the HTTPS listener, covering
+certificate (for example a preview wildcard), and `allowedRoutes` namespace policy.
+The certificate/private key remain in the Gateway namespace; app values contain
+no TLS Secret references or key copies. Hostname coverage, listener existence and
+route acceptance require live validation; chart rendering cannot prove them.
+Removing a preview removes its routes, not the shared listener or certificate.
+Database client certificates remain independent and keep their existing lifecycle.
+This chart capability does not deploy a wildcard listener or change running apps.
+See [Gateway API cross-namespace routing](https://gateway-api.sigs.k8s.io/guides/user-guides/multiple-ns/).
+
 Application routes remain separate per component
 so Rollouts can manage the backend route's weights. The example Rollout promotes
 immediately. A later delivery change will add measured steps and blocking tests.
