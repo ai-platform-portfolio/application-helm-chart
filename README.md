@@ -177,7 +177,12 @@ Use full syncs: Argo selective resource syncs do not execute hooks. This is a de
 gate, not an atomic lock against GitHub changes or a restriction on Argo administrators.
 
 **Activation prerequisites:** PR polling is disabled (`requeueAfterSeconds: 0`), so
-configure native ApplicationSet GitHub webhook delivery before registration. Private
+configure shared event delivery before registration. Generated Applications and
+ApplicationSets carry `platform.ai-platform-portfolio/preview: "true"`; the shared
+Argo Events receiver uses this label to refresh preview resources on PR changes,
+workflow completion and startup catch-up. The platform owns the signed organization
+webhook and triggers; application repositories add no webhook configuration.
+The label grants no Kubernetes permissions. Private
 OCI credentials, release reconciliation after publication, automated Atlas plan-repo
 provisioning and current chart/publisher caller pins must also be ready. Helm rendering
 does not create those integrations. Prove open/update/failure/close/reopen and missed
