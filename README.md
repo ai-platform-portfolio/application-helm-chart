@@ -80,6 +80,22 @@ certificate roles require `login: true` and reject `passwordSecret`. The generic
 specs alongside the existing credential resource maps. No Certificate is rendered
 unless requested; these client certificates are independent of Envoy HTTPS.
 
+### Optional deployed browser test definition
+
+Set `platform.tests.playwright.enabled: true` in application values to render a
+Testkube `TestWorkflow` in the shared `testkube` namespace. The chart uses the
+existing `platform.release.check.repository` and full
+`platform.release.expectedRevision` to fetch the exact application commit from
+GitHub, then runs `npm ci` and `npx playwright test` from `frontend` with
+`PREVIEW_URL=https://<hostname>`. Override `platform.tests.playwright.path` for
+another test directory. The browser runner image is pinned by digest, and the
+workflow has a 15-minute deadline by default.
+
+This opt-in defines a test; it does not execute the workflow or publish a GitHub
+merge status. Those stages require a separate deployment gate and live failure
+proof. The Git checkout is supported by the installed standalone Testkube CRD;
+actual execution and network reachability remain to be validated with a consumer.
+
 ### Argo bootstrap — platform operator
 
 The reusable registration template is `templates/argocd/application.yaml`. Render

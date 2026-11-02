@@ -1,0 +1,36 @@
+suite: optional deployed Playwright workflow
+
+templates:
+  - templates/testworkflows/playwright.yaml
+
+tests:
+  - it: omits the workflow by default
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: pins application tests to the published source and deployed hostname
+    set:
+      name: orders-pr-42
+      hostname: orders-pr-42.preview.example.com
+      platform.tests.playwright.enabled: true
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      platform.release.check.repository: example/orders
+    asserts:
+      - equal: {path: kind, value: TestWorkflow}
+      - equal: {path: metadata.namespace, value: testkube}
+      - equal: {path: metadata.name, value: orders-pr-42}
+      - equal: {path: spec.content.git.uri, value: 'https://github.com/example/orders.git'}
+      - equal: {path: spec.content.git.revision, value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      - equal: {path: 'spec.content.git.paths[0]', value: frontend}
+      - equal: {path: 'spec.container.env[0].value', value: 'https://orders-pr-42.preview.example.com'}
+      - equal: {path: spec.job.activeDeadlineSeconds, value: 900}
+      - matchRegex: {path: spec.container.image, pattern: '@sha256:[a-f0-9]{64}$'}
+
+  - it: refuses an opt-in without a source revision
+    set:
+      name: orders-pr-42
+      hostname: orders-pr-42.preview.example.com
+      platform.tests.playwright.enabled: true
+      platform.release.check.repository: example/orders
+    asserts:
+      - failedTemplate: {errorMessage: 'platform.release.expectedRevision is required for Playwright'}
