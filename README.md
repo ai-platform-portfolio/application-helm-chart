@@ -92,13 +92,18 @@ another test directory. The browser runner image is pinned by digest, and the
 workflow has a 15-minute deadline by default.
 
 The opt-in also renders a bounded Argo `PostSync` Job. Each full application sync
-waits for the published digest-pinned workloads to become Healthy, then the Job
-starts this TestWorkflow through the existing Testkube API and waits for its
-result. A failed test fails that sync. The chart adds the existing Testkube client
-network labels only for opted-in apps. Test execution does not yet publish a
-required GitHub merge status; that current-revision gate remains separate. The
-installed standalone CRD accepts the Git checkout, but actual execution and
-network reachability still need live consumer proof.
+waits for the published digest-pinned workloads to become Healthy. A namespaced,
+read-only pod check then requires every current component pod to be Ready with
+the exact image reference from the published release and a started container.
+Only then does the Job run this TestWorkflow through the existing Testkube API
+and wait for its result. A failed image check or browser test fails that sync.
+The publication PreSync gate checks the PR head SHA before deployment; the pod
+check proves the selected release is running at test start. A later PR push
+starts a new delivery event, so this is a point-in-time check. The chart adds
+the existing Testkube client network labels only for opted-in apps. Test
+execution does not yet publish a required GitHub merge status; that
+current-revision gate remains separate. Actual execution and network
+reachability still need live consumer proof.
 
 ### Argo bootstrap — platform operator
 
