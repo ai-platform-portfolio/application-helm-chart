@@ -24,6 +24,7 @@ tests:
       - equal: {path: spec.content.git.revision, value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
       - equal: {path: 'spec.content.git.paths[0]', value: frontend}
       - equal: {path: 'spec.container.env[0].value', value: 'https://orders-pr-42.preview.example.com'}
+      - equal: {path: 'spec.container.env[1]', value: {name: NPM_CONFIG_CACHE, value: /data/repo/.npm-cache}}
       - equal: {path: spec.job.activeDeadlineSeconds, value: 900}
       - matchRegex: {path: spec.container.image, pattern: '@sha256:[a-f0-9]{64}$'}
 

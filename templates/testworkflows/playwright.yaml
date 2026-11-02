@@ -26,6 +26,8 @@ spec:
     env:
       - name: PREVIEW_URL
         value: {{ printf "https://%s" $host | quote }}
+      - name: NPM_CONFIG_CACHE
+        value: /data/repo/.npm-cache
   steps:
     - name: Install browser test dependencies
       shell: npm ci --ignore-scripts --no-audit --no-fund

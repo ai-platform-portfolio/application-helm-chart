@@ -89,7 +89,8 @@ existing `platform.release.check.repository` and full
 GitHub, then runs `npm ci` and `npx playwright test` from `frontend` with
 `PREVIEW_URL=https://<hostname>`. Override `platform.tests.playwright.path` for
 another test directory. The browser runner image is pinned by digest, and the
-workflow has a 15-minute deadline by default.
+workflow has a 15-minute deadline by default. npm uses a cache under the
+writable Testkube checkout rather than the runner image's home directory.
 
 The opt-in also renders a bounded Argo `PostSync` Job. Each full application sync
 waits for the published digest-pinned workloads to become Healthy. A namespaced,
