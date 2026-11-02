@@ -58,7 +58,19 @@
         "release": {
           "type": "object", "additionalProperties": false,
           "properties": {
-            "expectedRevision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"}
+            "expectedRevision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"},
+            "check": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "repository": {"type": "string", "pattern": "^$|^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+                "workflow": {"type": "string", "pattern": "^\\.github/workflows/[^/@]+\\.ya?ml$"},
+                "pullRequest": {"type": "string", "pattern": "^$|^[1-9][0-9]{0,9}$"},
+                "tokenSecret": {"type": "string", "minLength": 1},
+                "image": {"type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$"},
+                "timeoutSeconds": {"type": "integer", "minimum": 30, "maximum": 300}
+              }
+            }
           }
         },
         "gateway": {
@@ -88,7 +100,18 @@
           "properties": {
             "enabled": {"type": "boolean"},
             "revision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"},
-            "chartRevision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"}
+            "chartRevision": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"},
+            "previews": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "registry": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"},
+                "domain": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"},
+                "sharedListener": {"type": "string", "minLength": 1},
+                "workflow": {"type": "string", "pattern": "^\\.github/workflows/[^/@]+\\.ya?ml$"},
+                "tokenSecret": {"type": "string", "minLength": 1}
+              }
+            }
           }
         },
         "credentials": {

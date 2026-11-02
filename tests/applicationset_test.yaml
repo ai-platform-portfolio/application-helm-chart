@@ -1,0 +1,63 @@
+suite: PR ApplicationSet delivery
+
+templates:
+  - templates/argocd/applicationset.yaml
+
+tests:
+  - it: leaves preview registration disabled by default
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: derives an isolated native PR application with a mandatory source and publication gate
+    set:
+      platform.argocd.repository: https://github.com/Example/Orders.git
+      platform.argocd.previews.enabled: true
+    asserts:
+      - equal: {path: kind, value: ApplicationSet}
+      - matchRegex: {path: metadata.name, pattern: '^orders-[a-f0-9]{12}-previews$'}
+      - equal: {path: 'spec.generators[0].pullRequest.github.owner', value: example}
+      - equal: {path: 'spec.generators[0].pullRequest.github.repo', value: orders}
+      - equal: {path: 'spec.generators[0].pullRequest.github.tokenRef', value: {secretName: argocd-github-api, key: token}}
+      - equal: {path: 'spec.generators[0].pullRequest.requeueAfterSeconds', value: 0}
+      - notExists: {path: 'spec.generators[0].pullRequest.github.labels'}
+      - equal: {path: spec.template.spec.source.repoURL, value: 'localacrk8s.azurecr.io/releases/example/orders/pr-{{.number}}'}
+      - equal: {path: spec.template.spec.source.targetRevision, value: '>=0.0.0-0'}
+      - equal: {path: spec.template.spec.source.helm.valueFiles, value: [release-values.yaml]}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.release.expectedRevision, value: '{{.head_sha}}'}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.release.check.enabled, value: true}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.release.check.repository, value: example/orders}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.release.check.pullRequest, value: '{{.number}}'}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.argocd.previews.enabled, value: false}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.lifecycle.cleanup.enabled, value: true}
+      - equal: {path: spec.template.metadata.finalizers, value: [resources-finalizer.argocd.argoproj.io]}
+      - equal: {path: spec.syncPolicy.preserveResourcesOnDeletion, value: false}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.gateway.sharedListener, value: preview-https}
+      - matchRegex: {path: spec.template.spec.destination.namespace, pattern: '^orders-[a-f0-9]{12}-pr-\{\{.number\}\}$'}
+      - equal: {path: 'spec.template.spec.source.helm.valuesObject.platform.namespaceLabels["gitops.platform/preview"]', value: 'true'}
+
+  - it: supports another repository and platform settings without app-specific defaults
+    set:
+      platform.argocd.namespace: delivery
+      platform.argocd.repository: https://github.com/Other/Orders
+      platform.argocd.previews: {enabled: true, registry: registry.example.test, domain: previews.example.test, sharedListener: previews}
+    asserts:
+      - equal: {path: metadata.namespace, value: delivery}
+      - matchRegex: {path: metadata.name, pattern: '^orders-[a-f0-9]{12}-previews$'}
+      - notEqual: {path: metadata.name, value: orders-11dd895de33a-previews}
+      - equal: {path: spec.template.spec.source.repoURL, value: 'registry.example.test/releases/other/orders/pr-{{.number}}'}
+      - matchRegex: {path: spec.template.spec.source.helm.valuesObject.hostname, pattern: '\.previews\.example\.test$'}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.argocd.namespace, value: delivery}
+
+  - it: refuses ambiguous registration modes
+    set:
+      platform.argocd.enabled: true
+      platform.argocd.previews.enabled: true
+    asserts:
+      - failedTemplate: {errorMessage: 'Choose single Application registration or previews, not both'}
+
+  - it: refuses an unsupported repository URL
+    set:
+      platform.argocd.repository: https://example.test/org/app
+      platform.argocd.previews.enabled: true
+    asserts:
+      - failedTemplate: {errorMessage: 'previews require an HTTPS github.com owner/repository URL'}

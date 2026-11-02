@@ -129,6 +129,62 @@ check. The comparison checks source identity only: it does not verify successful
 CI completion, artifact integrity or PR trust. Those remain separate delivery gates.
 This adds no ApplicationSet or runtime check and does not deploy a release.
 
+### PR preview registration — platform operator
+
+Set the existing repository URL and enable previews, then render only
+`templates/argocd/applicationset.yaml` for separately approved registration:
+
+```yaml
+platform:
+  argocd:
+    repository: https://github.com/org/app.git
+    previews:
+      enabled: true
+```
+
+The native GitHub PR generator discovers open PRs without a label requirement.
+Repository identity plus PR number derives the Application, namespace and hostname;
+the owner/repository hash isolates equal repository names in different organizations.
+Platform overrides under `previews` select registry, domain, shared listener, expected
+workflow and existing GitHub token Secret. Defaults match the portfolio platform;
+they are configurable service settings, not per-application resource names.
+The template currently supports github.com repositories and same-repository PR
+publications. Forks cannot pass the publication gate.
+
+Each child selects the greatest semantic version (including prereleases) in its own
+`releases/<owner>/<repo>/pr-<number>/application` OCI repository. The publisher must
+use monotonic versions and lock writes. Selection alone is insufficient: the child
+independently supplies current `head_sha` to `expectedRevision`, loads packaged
+release values, and requires `publication.json` from the shared publisher. A missing
+or stale package fails rendering. The child disables registration, attaches the
+shared Gateway listener, supplies the preview namespace label and enables the existing
+ordered cleanup. Minimal database requests must explicitly use `reclaimPolicy: delete`.
+Closing the PR removes the generated Application; its cascade finalizer runs cleanup.
+
+The native PreSync Job runs a short Python standard-library check because the PR
+generator cannot filter workflow conclusions. It verifies the exact run ID/attempt,
+expected workflow, successful completion and source SHA, then rereads the current
+open PR and binds its repository, branch and SHA to the run. GitHub can return an
+empty run `pull_requests` array; when populated, it must also contain the expected
+PR. Forks and changed heads are rejected. The digest-pinned Python
+image is the existing application base; no extra image build or service is needed.
+The Job runs in the Argo namespace, projects only the existing read-only GitHub token,
+has no Kubernetes API token/RBAC, and uses a read-only filesystem. It makes bounded
+API reads without polling, rejects redirects, and redacts API errors. Pending/error
+results fail closed; native Argo sync retries recreate the hook within the configured
+retry limit. Failed hooks remain available for diagnosis; successful ones are deleted.
+Use full syncs: Argo selective resource syncs do not execute hooks. This is a delivery
+gate, not an atomic lock against GitHub changes or a restriction on Argo administrators.
+
+**Activation prerequisites:** PR polling is disabled (`requeueAfterSeconds: 0`), so
+configure native ApplicationSet GitHub webhook delivery before registration. Private
+OCI credentials, release reconciliation after publication, automated Atlas plan-repo
+provisioning and current chart/publisher caller pins must also be ready. Helm rendering
+does not create those integrations. Prove open/update/failure/close/reopen and missed
+event recovery before calling previews unattended. This chart change alone does not
+deploy previews or provide Testkube merge checks. Single-Application registration
+remains available; enabling both registration modes is rejected.
+
 ### Disposable cleanup — platform operator
 
 > [!WARNING]

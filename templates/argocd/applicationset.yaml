@@ -1,0 +1,78 @@
+{{- $argo := .Values.platform.argocd -}}
+{{- $preview := $argo.previews -}}
+{{- if $preview.enabled -}}
+{{- if $argo.enabled -}}{{- fail "Choose single Application registration or previews, not both" -}}{{- end -}}
+{{- $url := required "platform.argocd.repository is required for previews" $argo.repository -}}
+{{- if not (regexMatch "^https://github.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\\.git)?$" $url) -}}
+{{- fail "previews require an HTTPS github.com owner/repository URL" -}}
+{{- end -}}
+{{- $repository := lower (trimSuffix ".git" (trimPrefix "https://github.com/" $url)) -}}
+{{- $parts := splitList "/" $repository -}}
+{{- $slug := trimAll "-" (regexReplaceAll "[^a-z0-9]+" (index $parts 1) "-") | trunc 28 | trimSuffix "-" | default "app" -}}
+{{- $base := printf "%s-%s" $slug (trunc 12 (sha256sum $repository)) -}}
+{{- $name := printf "%s-pr-%s" $base "{{.number}}" -}}
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ printf "%s-previews" $base }}
+  namespace: {{ $argo.namespace | quote }}
+spec:
+  goTemplate: true
+  goTemplateOptions: [missingkey=error]
+  generators:
+    - pullRequest:
+        # PR webhook delivery must be wired before activation; no PR poller.
+        requeueAfterSeconds: 0
+        github:
+          owner: {{ index $parts 0 | quote }}
+          repo: {{ index $parts 1 | quote }}
+          tokenRef: {secretName: {{ $preview.tokenSecret | quote }}, key: token}
+  syncPolicy:
+    preserveResourcesOnDeletion: false
+  template:
+    metadata:
+      name: {{ $name | quote }}
+      finalizers: [resources-finalizer.argocd.argoproj.io]
+    spec:
+      project: {{ $argo.project | quote }}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {{ $name | quote }}
+      source:
+        repoURL: {{ printf "%s/releases/%s/pr-%s" $preview.registry $repository "{{.number}}" | quote }}
+        chart: application
+        # Include prereleases in the publisher's monotonically increasing versions.
+        targetRevision: '>=0.0.0-0'
+        helm:
+          releaseName: {{ $name | quote }}
+          valueFiles: [release-values.yaml]
+          valuesObject:
+            name: {{ $name | quote }}
+            namespace: {{ $name | quote }}
+            hostname: {{ printf "%s.%s" $name $preview.domain | quote }}
+            platform:
+              argocd:
+                enabled: false
+                namespace: {{ $argo.namespace | quote }}
+                previews: {enabled: false}
+              release:
+                expectedRevision: {{ "{{.head_sha}}" | quote }}
+                check:
+                  enabled: true
+                  repository: {{ $repository | quote }}
+                  workflow: {{ $preview.workflow | quote }}
+                  pullRequest: {{ "{{.number}}" | quote }}
+                  tokenSecret: {{ $preview.tokenSecret | quote }}
+              namespaceLabels:
+                gitops.platform/preview: 'true'
+              gateway:
+                sharedListener: {{ $preview.sharedListener | quote }}
+              lifecycle:
+                cleanup: {enabled: true}
+      syncPolicy:
+        automated: {prune: true, selfHeal: true}
+        retry:
+          limit: 10
+          backoff: {duration: 10s, factor: 2, maxDuration: 3m}
+        syncOptions: [ServerSideApply=true, PruneLast=true]
+{{- end }}

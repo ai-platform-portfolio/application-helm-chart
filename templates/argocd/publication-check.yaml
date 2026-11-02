@@ -1,0 +1,60 @@
+{{- $check := .Values.platform.release.check -}}
+{{- if $check.enabled -}}
+{{- $_ := required "publication check requires platform.release.expectedRevision" .Values.platform.release.expectedRevision -}}
+{{- $_ := required "publication check requires repository" $check.repository -}}
+{{- $_ := required "publication check requires pullRequest" $check.pullRequest -}}
+{{- $publication := .Files.Get "publication.json" | fromJson -}}
+{{- if or (hasKey $publication "Error") (not $publication.runId) (not $publication.runAttempt) (not $publication.repository) (not $publication.workflowRef) -}}
+{{- fail "publication check requires packaged publication.json" -}}
+{{- end -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "application.resourceName" (dict "root" . "name" "publication") }}
+  namespace: {{ .Values.platform.argocd.namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: {{ $check.timeoutSeconds }}
+  backoffLimit: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: check-publication
+          image: {{ $check.image | quote }}
+          command:
+            - python3
+            - -c
+            - |
+{{ .Files.Get "files/argocd/check-publication.py" | indent 14 }}
+          env:
+            - {name: PUBLICATION, value: {{ $publication | toJson | quote }}}
+            - {name: EXPECTED_REPOSITORY, value: {{ $check.repository | quote }}}
+            - {name: EXPECTED_WORKFLOW, value: {{ $check.workflow | quote }}}
+            - {name: EXPECTED_REVISION, value: {{ .Values.platform.release.expectedRevision | quote }}}
+            - {name: PR_NUMBER, value: {{ $check.pullRequest | quote }}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+          volumeMounts:
+            - {name: github-token, mountPath: /var/run/github, readOnly: true}
+      volumes:
+        - name: github-token
+          secret:
+            secretName: {{ $check.tokenSecret | quote }}
+            defaultMode: 0440
+            items: [{key: token, path: token}]
+{{- end }}
