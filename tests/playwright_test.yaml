@@ -11,6 +11,7 @@ tests:
   - it: pins application tests to the published source and deployed hostname
     set:
       name: orders-pr-42
+      namespace: orders-pr-42
       hostname: orders-pr-42.preview.example.com
       platform.tests.playwright.enabled: true
       platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -29,6 +30,7 @@ tests:
   - it: refuses an opt-in without a source revision
     set:
       name: orders-pr-42
+      namespace: orders-pr-42
       hostname: orders-pr-42.preview.example.com
       platform.tests.playwright.enabled: true
       platform.release.check.repository: example/orders

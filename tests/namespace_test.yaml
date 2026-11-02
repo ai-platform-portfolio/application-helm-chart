@@ -74,3 +74,10 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: admits only opted-in application test callers through the shared Testkube policy
+    set:
+      namespace: orders-pr-42
+      platform.tests.playwright.enabled: true
+    asserts:
+      - equal: {path: 'metadata.labels["gitops.platform/testkube-client"]', value: 'true'}

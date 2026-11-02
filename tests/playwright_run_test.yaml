@@ -1,0 +1,31 @@
+suite: automatic deployed Playwright execution
+
+templates:
+  - templates/testworkflows/run.yaml
+
+tests:
+  - it: omits the runner by default
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: runs the exact workflow after healthy sync and fails the sync on test failure
+    set:
+      name: orders-pr-42
+      namespace: orders-pr-42
+      platform.tests.playwright.enabled: true
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - equal: {path: kind, value: Job}
+      - equal: {path: metadata.namespace, value: orders-pr-42}
+      - equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PostSync}
+      - equal: {path: spec.activeDeadlineSeconds, value: 960}
+      - equal: {path: spec.backoffLimit, value: 0}
+      - equal:
+          path: 'spec.template.metadata.labels["gitops.platform/testkube-client"]'
+          value: 'true'
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: source-sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --watch

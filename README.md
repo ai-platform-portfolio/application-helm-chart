@@ -91,10 +91,14 @@ GitHub, then runs `npm ci` and `npx playwright test` from `frontend` with
 another test directory. The browser runner image is pinned by digest, and the
 workflow has a 15-minute deadline by default.
 
-This opt-in defines a test; it does not execute the workflow or publish a GitHub
-merge status. Those stages require a separate deployment gate and live failure
-proof. The Git checkout is supported by the installed standalone Testkube CRD;
-actual execution and network reachability remain to be validated with a consumer.
+The opt-in also renders a bounded Argo `PostSync` Job. Each full application sync
+waits for the published digest-pinned workloads to become Healthy, then the Job
+starts this TestWorkflow through the existing Testkube API and waits for its
+result. A failed test fails that sync. The chart adds the existing Testkube client
+network labels only for opted-in apps. Test execution does not yet publish a
+required GitHub merge status; that current-revision gate remains separate. The
+installed standalone CRD accepts the Git checkout, but actual execution and
+network reachability still need live consumer proof.
 
 ### Argo bootstrap — platform operator
 

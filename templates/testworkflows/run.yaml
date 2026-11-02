@@ -1,0 +1,55 @@
+{{- $test := .Values.platform.tests.playwright -}}
+{{- if $test.enabled -}}
+{{- $name := required "name is required for Playwright" .Values.name -}}
+{{- $namespace := required "namespace is required for Playwright" .Values.namespace -}}
+{{- $revision := required "platform.release.expectedRevision is required for Playwright" .Values.platform.release.expectedRevision -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "application.resourceName" (dict "root" . "name" "playwright-run") }}
+  namespace: {{ $namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: {{ add $test.timeoutSeconds 60 }}
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        gitops.platform/testkube-client: 'true'
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: testkube
+          image: docker.io/kubeshop/testkube-cli:2.14.2@sha256:1ee9228907b31d6fb901b0683237797aa107ed73915504ac8a547de01681f9b7
+          args:
+            - --client=direct
+            - --api-uri=http://testkube-api-server.testkube.svc.cluster.local:8088
+            - run
+            - testworkflow
+            - {{ $name | quote }}
+            - --tag
+            - {{ printf "source-sha=%s" $revision | quote }}
+            - --watch
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+{{- end }}
