@@ -33,4 +33,4 @@ tests:
       - documentIndex: 2
         equal: {path: 'spec.template.spec.containers[0].env[3].value', value: failure}
       - documentIndex: 1
-        equal: {path: 'spec.template.spec.volumes[0].secret.secretName', value: argocd-github-status}
+        equal: {path: 'spec.template.spec.volumes[0].secret.secretName', value: argocd-github-api}

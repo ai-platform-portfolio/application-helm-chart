@@ -4,7 +4,7 @@
 {{- $repository := required "deployed test status requires repository" $check.repository -}}
 {{- $number := required "deployed test status requires pullRequest" $check.pullRequest -}}
 {{- $revision := required "deployed test status requires expectedRevision" .Values.platform.release.expectedRevision -}}
-{{- $token := required "deployed test status requires statusTokenSecret" $test.statusTokenSecret -}}
+{{- $token := required "deployed test status requires release check tokenSecret" $check.tokenSecret -}}
 {{- range $hook := list (dict "state" "pending" "phase" "PreSync" "wave" "-1") (dict "state" "success" "phase" "PostSync" "wave" "1") (dict "state" "failure" "phase" "SyncFail" "wave" "0") -}}
 apiVersion: batch/v1
 kind: Job
