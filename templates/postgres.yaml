@@ -1,4 +1,23 @@
 {{- include "application.defaults" . -}}
+{{- if eq .Values.platform.postgres.backend "azure" }}
+{{- $server := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.DBforPostgreSQL/flexibleServers/%s" (required "platform.azure.subscriptionId is required" .Values.platform.azure.subscriptionId) (required "platform.postgres.azure.serverResourceGroup is required" .Values.platform.postgres.azure.serverResourceGroup) (required "platform.postgres.azure.serverName is required" .Values.platform.postgres.azure.serverName) }}
+{{- $names := dict }}
+{{- range $name, $database := .Values.postgres.databases }}
+{{- if hasKey $names $database.name }}{{- fail (printf "database %s is declared more than once" $database.name) }}{{- end }}
+{{- $_ := set $names $database.name true }}
+apiVersion: dbforpostgresql.azure.com/v20250801
+kind: FlexibleServersDatabase
+metadata:
+  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
+  namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "database" | quote }}
+spec:
+  azureName: {{ $database.name | quote }}
+  owner: {armId: {{ $server | quote }}}
+---
+{{- end }}
+{{- else }}
 {{- $names := dict }}
 {{- range $name, $database := .Values.postgres.databases }}
 {{- if hasKey $names $database.name }}
@@ -17,7 +36,8 @@ metadata:
 spec:
   cluster: {name: {{ $.Values.platform.postgres.cluster | quote }}}
   name: {{ $database.name | quote }}
-  owner: {{ $database.owner | quote }}
+  owner: {{ required (printf "CNPG database %s requires owner" $name) $database.owner | quote }}
   databaseReclaimPolicy: {{ default $.Values.platform.postgres.databaseReclaimPolicy $database.reclaimPolicy }}
 ---
+{{- end }}
 {{- end }}

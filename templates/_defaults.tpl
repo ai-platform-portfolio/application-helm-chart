@@ -16,13 +16,18 @@
 {{- end -}}
 {{- $generated := dict -}}
 {{- range $name, $database := .Values.databases -}}
-{{- $defaults := include "application.databaseDefaults" (dict "root" $ "name" $name "database" $database) | fromYaml -}}
+{{- $template := "application.databaseDefaults" -}}
+{{- if eq $.Values.platform.postgres.backend "azure" -}}{{- $template = "application.azureDatabaseDefaults" -}}{{- end -}}
+{{- $defaults := include $template (dict "root" $ "name" $name "database" $database) | fromYaml -}}
 {{- $generated = mergeOverwrite $generated $defaults -}}
 {{- end -}}
 {{- $_ := mergeOverwrite .Values (mergeOverwrite $generated (deepCopy .Values)) -}}
 {{- $_ := set .Values.platform.atlas "roleScope" (keys .Values.postgres.roles | sortAlpha) -}}
 {{- $_ := set .Values.platform.atlas "rolePlanRepository" (default (printf "%s-roles" .Values.name) .Values.platform.atlas.rolePlanRepository) -}}
 {{- $waves := dict "namespace" -40 "atlasAccess" -25 "atlasSchema" -20 "database" -10 "deployment" 10 "rollout" 10 "service" 10 "listenerSet" 10 "httpRoute" 10 -}}
+{{- if eq .Values.platform.postgres.backend "azure" -}}
+{{- $waves = mergeOverwrite $waves (dict "userAssignedIdentity" -35 "federatedIdentityCredential" -30 "database" -20 "atlasSchema" -15) -}}
+{{- end -}}
 {{- $_ := set .Values.platform "syncWaves" (mergeOverwrite $waves .Values.platform.syncWaves) -}}
 {{- end -}}
 {{- range $name, $component := .Values.components -}}
@@ -42,7 +47,17 @@
 {{- range $entry := $component.env -}}
 {{- if eq $entry.name $envName -}}{{- fail (printf "component %s declares %s twice" $name $envName) -}}{{- end -}}
 {{- end -}}
+{{- if eq $.Values.platform.postgres.backend "azure" -}}
+{{- if $component.identity -}}{{- fail (printf "component %s must use its generated database identity" $name) -}}{{- end -}}
+{{- $base := include "application.resourceName" (dict "root" $ "name" $component.database) -}}
+{{- $user := printf "app_%s_app" (replace "-" "_" $base) -}}
+{{- $database := index $.Values.postgres.databases $component.database -}}
+{{- $host := printf "%s.postgres.database.azure.com" $.Values.platform.postgres.azure.serverName -}}
+{{- $_ := set $component "identity" (printf "%s-runtime" $component.database) -}}
+{{- $_ := set $component "env" (concat (default list $component.env) (list (dict "name" $envName "value" (printf "postgresql://%s@%s:5432/%s?sslmode=verify-full" $user $host $database.name)) (dict "name" "DATABASE_AUTH" "value" "entra"))) -}}
+{{- else -}}
 {{- $_ := set $component "env" (append (default list $component.env) (dict "name" $envName "valueFrom" (dict "secretKeyRef" (dict "name" $secret "key" "url")))) -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

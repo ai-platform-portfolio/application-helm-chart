@@ -32,6 +32,7 @@ platform:
       repository: ""
       workflow: .github/workflows/publish.yml
       pullRequest: ""
+      environment: ""
       tokenSecret: argocd-github-api
       image: python:3.12-slim@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
       timeoutSeconds: 60
@@ -59,6 +60,11 @@ platform:
       sharedListener: preview-https
       workflow: .github/workflows/publish.yml
       tokenSecret: argocd-github-api
+    environments:
+      enabled: false
+      registry: localacrk8s.azurecr.io
+      # Each target reads deploy/environments/<name>.yaml from the application repo.
+      targets: {}
 
   # Native ESO and credential-reader resources; keys are names, specs stay native.
   credentials:
@@ -74,6 +80,7 @@ platform:
   syncWaves: {}
 
   postgres:
+    backend: cnpg
     namespace: postgres
     cluster: platform
     databaseReclaimPolicy: retain
@@ -82,6 +89,9 @@ platform:
       issuerRef: {name: postgres-client, kind: Issuer}
       duration: 720h
       renewBefore: 168h
+    azure:
+      serverName: ""
+      serverResourceGroup: ""
 
   atlas:
     namespace: atlas-system
@@ -100,6 +110,7 @@ platform:
       sslkey: /etc/atlas-postgres/tls.key
     cloudTokenSecret: atlas-token-secret
     cloudTokenKey: ATLAS_TOKEN
+    azureAdminUser: ""
     roleReview: ERROR
     blockDestructiveRoles: true
     migrateDown:

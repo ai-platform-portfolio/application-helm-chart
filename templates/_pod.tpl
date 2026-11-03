@@ -10,7 +10,10 @@
 {{- end -}}
 {{- $skip := list -}}
 {{- if $identity -}}
-{{- $_ := required (printf "identity %s needs clientId before deploying workloads" $identity) (index .root.Values.platform.azure.identities $identity).clientId -}}
+{{- $identityConfig := index .root.Values.platform.azure.identities $identity -}}
+{{- if not (or $identityConfig.clientId $identityConfig.reflectToApplication) -}}
+{{- fail (printf "identity %s needs clientId or generated ConfigMap" $identity) -}}
+{{- end -}}
 {{- range $name, $container := merge (deepCopy (default dict .component.sidecars)) (default dict .component.initContainers) -}}
 {{- if not $container.azureIdentity -}}
 {{- $skip = append $skip $name -}}
@@ -33,7 +36,7 @@ spec:
   automountServiceAccountToken: false
   {{- end }}
   securityContext:
-    {{- if .component.database }}
+    {{- if and .component.database (eq .root.Values.platform.postgres.backend "cnpg") }}
     {{- toYaml (mergeOverwrite (dict "fsGroup" 65532) (deepCopy .root.Values.platform.pod.securityContext)) | nindent 4 }}
     {{- else }}
     {{- toYaml .root.Values.platform.pod.securityContext | nindent 4 }}
@@ -53,7 +56,12 @@ spec:
     - name: {{ .name }}
       image: {{ .component.image | quote }}
       imagePullPolicy: {{ .root.Values.platform.pod.imagePullPolicy }}
-      {{- with .component.env }}
+      {{- $env := deepCopy (default list .component.env) }}
+      {{- if and $identity (not (index .root.Values.platform.azure.identities $identity).clientId) }}
+      {{- $configMap := printf "%s-client-id" (include "application.resourceName" (dict "root" .root "name" $identity)) }}
+      {{- $env = append $env (dict "name" "AZURE_CLIENT_ID" "valueFrom" (dict "configMapKeyRef" (dict "name" $configMap "key" "clientId"))) }}
+      {{- end }}
+      {{- with $env }}
       env:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -75,7 +83,7 @@ spec:
 
       volumeMounts:
         {{- toYaml .root.Values.platform.pod.volumeMounts | nindent 8 }}
-        {{- if .component.database }}
+        {{- if and .component.database (eq .root.Values.platform.postgres.backend "cnpg") }}
         - {name: database-client, mountPath: /etc/postgres, readOnly: true}
         {{- end }}
 
@@ -88,7 +96,7 @@ spec:
 
   volumes:
     {{- toYaml .root.Values.platform.pod.volumes | nindent 4 }}
-    {{- if .component.database }}
+    {{- if and .component.database (eq .root.Values.platform.postgres.backend "cnpg") }}
     - name: database-client
       secret:
         secretName: {{ printf "%s-connection" (include "application.resourceName" (dict "root" .root "name" .component.database)) | quote }}

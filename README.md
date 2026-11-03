@@ -483,8 +483,35 @@ helm template poc . -f examples/application.yaml -f examples/production.yaml
 ```
 
 The example image digests and domains are placeholders. Platform operators and
-the shared Gateway are installed through GitOps. ASO database and Atlas
-migration templates are separate follow-up work.
+the shared Gateway are installed through GitOps.
+
+## Azure PostgreSQL and persistent environments
+
+The same minimal `databases` intent can target Azure PostgreSQL Flexible Server.
+The platform supplies `platform.postgres.backend: azure`, the server name and
+resource group, Azure identity metadata, and the Atlas administrator login.
+For each requested database, the chart creates an ASO `FlexibleServersDatabase`,
+a dedicated user-assigned runtime identity and federated credential, and
+Atlas-owned Entra role, identity mapping, grants and application migrations.
+The API receives a password-free connection URL and its workload identity client
+ID. The application obtains short-lived Entra database tokens. CNPG previews
+continue using their client certificates.
+
+Render this profile with `examples/managed.yaml` and
+`examples/azure-managed.yaml`. The Azure identity and database owner CRs are
+deleted with an environment; the shared server is owned separately. Database
+contents survive a revision update or rollback within the same environment.
+
+For persistent registration, an application declares its repository and target
+hostnames, as in `examples/persistent-registration.yaml`. The platform renders
+only `templates/argocd/environments.yaml` with its own Azure metadata. Each
+ApplicationSet reads `deploy/environments/<environment>.yaml` from the app's
+main branch; that file pins an immutable OCI release scope, version and source
+SHA. A new pin updates the existing environment without changing its database
+identity. Promotion and rollback are pin changes, not new chart templates.
+The staging browser status uses a distinct `deployed-playwright-staging` context.
+Actual Azure token, SQL and cleanup behavior require live reconciliation after
+the shared identity package and chart are merged.
 
 ## Test the chart
 

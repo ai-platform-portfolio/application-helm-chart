@@ -150,3 +150,65 @@ postgres:
       tag: {{ .tag | quote }}
     {{- end }}
 {{- end -}}
+
+{{/* A managed database has a distinct Entra runtime identity and Atlas-owned SQL. */}}
+{{- define "application.azureDatabaseDefaults" -}}
+{{- if and .database.reclaimPolicy (ne .database.reclaimPolicy "delete") -}}
+{{- fail "Azure database cleanup requires reclaimPolicy: delete" -}}
+{{- end -}}
+{{- $base := include "application.resourceName" (dict "root" .root "name" .name) -}}
+{{- $sql := printf "app_%s" (replace "-" "_" $base) -}}
+{{- $databaseName := default $sql .database.name -}}
+{{- $runtime := printf "%s_app" $sql -}}
+{{- $identity := printf "%s-runtime" .name -}}
+{{- $identityBase := include "application.resourceName" (dict "root" .root "name" $identity) -}}
+{{- $pg := .root.Values.platform.postgres -}}
+{{- $_ := required "platform.postgres.azure.serverName is required" $pg.azure.serverName -}}
+{{- $_ := required "platform.postgres.azure.serverResourceGroup is required" $pg.azure.serverResourceGroup -}}
+platform:
+  azure:
+    identities:
+      {{ $identity }}:
+        azureName: {{ printf "id-%s" $base | quote }}
+        reflectToApplication: true
+
+postgres:
+  databases:
+    {{ .name }}:
+      name: {{ $databaseName | quote }}
+  roles:
+    {{ $runtime }}:
+      login: true
+      authentication: entra
+  migrations:
+    {{ .name }}-identity:
+      database: {{ .name }}
+      role: {{ $runtime }}
+      revisionsSchema: atlas_identity_revisions
+      syncWave: -10
+      roleVars: {runtime: {{ $runtime }}}
+      principalIdConfigMap: {{ $identityBase }}-principal-id
+      local:
+        1_entra.sql: |
+{{ .root.Files.Get "files/postgres/1_entra.sql" | indent 10 }}
+    {{ .name }}-access:
+      database: {{ .name }}
+      role: {{ $runtime }}
+      schema: public
+      revisionsSchema: atlas_access_revisions
+      syncWave: -5
+      roleVars: {runtime: {{ $runtime }}}
+      local:
+        1_access.sql: |
+{{ .root.Files.Get "files/postgres/1_access.sql" | indent 10 }}
+    {{- with .database.migration }}
+    {{ $.name }}:
+      database: {{ $.name }}
+      role: {{ $runtime }}
+      schema: public
+      revisionsSchema: atlas_schema_revisions
+      syncWave: 0
+      repository: {{ .repository | quote }}
+      tag: {{ .tag | quote }}
+    {{- end }}
+{{- end -}}
