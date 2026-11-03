@@ -504,12 +504,24 @@ contents survive a revision update or rollback within the same environment.
 
 For persistent registration, an application declares its repository and target
 hostnames, as in `examples/persistent-registration.yaml`. The platform renders
-only `templates/argocd/environments.yaml` with its own Azure metadata. Each
-ApplicationSet reads `deploy/environments/<environment>.yaml` from the app's
-main branch; that file pins an immutable OCI release scope, version and source
-SHA. A new pin updates the existing environment without changing its database
-identity. Promotion and rollback are pin changes, not new chart templates.
-The staging browser status uses a distinct `deployed-playwright-staging` context.
+only `templates/argocd/environments.yaml` with its Azure and GitHub App metadata.
+That template creates one ApplicationSet per target and a chart-owned Argo
+Application that reconciles `templates/kargo/`. Kargo derives an isolated Project
+from the repository, discovers published main OCI charts as Freight, and writes
+`deploy/environments/<environment>/release.yaml` on the application's `delivery`
+branch. Each file pins one immutable version; the OCI chart already contains the
+source SHA, image digests and migration version. Production can name staging as
+`from` and accepts only Freight verified there. The verification AnalysisRun
+requires Argo to finish the selected version's PostSync browser hook before
+making that Freight available downstream. Kargo promotion remains manual by
+default. An earlier Freight is a rollback without replacing the database.
+
+The operator supplies `platform.kargo.github` App ID, installation ID and Key
+Vault key reference only when rendering the registration. The generated Kargo
+ExternalSecret matches this repository URL exactly; no key is checked into the
+application repository. The existing GitHub App must have Contents write access
+to the delivery branch, and the Kargo controller needs ACR read access. Those
+permissions and the complete promotion path require live proof after merge.
 Actual Azure token, SQL and cleanup behavior require live reconciliation after
 the shared identity package and chart are merged.
 

@@ -26,9 +26,9 @@ spec:
   generators:
     - git:
         repoURL: {{ $url | quote }}
-        revision: {{ default "main" $argo.revision | quote }}
+        revision: delivery
         files:
-          - path: {{ printf "deploy/environments/%s.yaml" $environment | quote }}
+          - path: {{ printf "deploy/environments/%s/release.yaml" $environment | quote }}
   syncPolicy:
     preserveResourcesOnDeletion: false
   template:
@@ -43,7 +43,7 @@ spec:
         server: https://kubernetes.default.svc
         namespace: {{ $name | quote }}
       source:
-        repoURL: {{ printf "%s/releases/%s/%s" $persistent.registry $repository "{{.release.scope}}" | quote }}
+        repoURL: {{ printf "%s/releases/%s/main" $persistent.registry $repository | quote }}
         chart: application
         targetRevision: {{ "{{.release.version}}" | quote }}
         helm:
@@ -56,7 +56,6 @@ spec:
             platform:
               argocd: {enabled: false, environments: {enabled: false}}
               release:
-                expectedRevision: {{ "{{.release.sourceSha}}" | quote }}
                 check:
                   enabled: true
                   repository: {{ $repository | quote }}
@@ -82,6 +81,44 @@ spec:
           limit: 10
           backoff: {duration: 10s, factor: 2, maxDuration: 3m}
         syncOptions: [ServerSideApply=true, PruneLast=true]
+---
+{{- end }}
+{{- if $.Values.platform.kargo.enabled }}
+{{- $kargoName := printf "%s-delivery" $base -}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $kargoName | quote }}
+  namespace: {{ $argo.namespace | quote }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ $argo.project | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $argo.namespace | quote }}
+  source:
+    repoURL: {{ $argo.chartRepository | quote }}
+    targetRevision: {{ required "platform.argocd.chartRevision must pin Kargo registration" $argo.chartRevision | quote }}
+    path: .
+    helm:
+      releaseName: {{ $kargoName | quote }}
+      valuesObject:
+        platform:
+          argocd:
+            repository: {{ $url | quote }}
+            namespace: {{ $argo.namespace | quote }}
+            environments:
+              registry: {{ $persistent.registry | quote }}
+              targets:
+                {{- toYaml $persistent.targets | nindent 16 }}
+          kargo:
+            {{- toYaml (mergeOverwrite (deepCopy $.Values.platform.kargo) (dict "enabled" true)) | nindent 12 }}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    retry:
+      limit: 10
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
+    syncOptions: [ServerSideApply=true, PruneLast=true, SkipDryRunOnMissingResource=true]
 ---
 {{- end }}
 {{- end }}

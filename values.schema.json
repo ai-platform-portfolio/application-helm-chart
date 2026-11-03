@@ -137,10 +137,31 @@
                   "propertyNames": {"pattern": "^[a-z][a-z0-9-]{0,20}$"},
                   "additionalProperties": {
                     "type": "object", "required": ["hostname"], "additionalProperties": false,
-                    "properties": {"hostname": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"}}
+                    "properties": {
+                      "hostname": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"},
+                      "from": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,20}$"}
+                    }
                   }
                 }
               }
+            }
+          }
+        },
+        "kargo": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "github": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "appId": {"type": "string"},
+                "installationId": {"type": "string"},
+                "privateKeyRemoteKey": {"type": "string"}
+              }
+            },
+            "verification": {
+              "type": "object", "additionalProperties": false,
+              "properties": {"image": {"type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$"}}
             }
           }
         },
