@@ -1,0 +1,36 @@
+suite: current-source deployed browser status
+
+templates:
+  - templates/argocd/test-status.yaml
+
+tests:
+  - it: omits GitHub status hooks without opted-in PR testing
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: emits pending success and failure hooks for the exact PR head
+    set:
+      namespace: orders-pr-42
+      platform.tests.playwright.enabled: true
+      platform.release.check.enabled: true
+      platform.release.check.repository: example/orders
+      platform.release.check.pullRequest: "42"
+      platform.release.expectedRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - hasDocuments: {count: 3}
+      - documentIndex: 0
+        equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PreSync}
+      - documentIndex: 0
+        equal: {path: 'metadata.annotations["argocd.argoproj.io/sync-wave"]', value: '-1'}
+      - documentIndex: 0
+        equal: {path: 'spec.template.spec.containers[0].env[3].value', value: pending}
+      - documentIndex: 1
+        equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: PostSync}
+      - documentIndex: 1
+        equal: {path: 'spec.template.spec.containers[0].env[3].value', value: success}
+      - documentIndex: 2
+        equal: {path: 'metadata.annotations["argocd.argoproj.io/hook"]', value: SyncFail}
+      - documentIndex: 2
+        equal: {path: 'spec.template.spec.containers[0].env[3].value', value: failure}
+      - documentIndex: 1
+        equal: {path: 'spec.template.spec.volumes[0].secret.secretName', value: argocd-github-api}
