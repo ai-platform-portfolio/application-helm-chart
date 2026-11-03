@@ -101,10 +101,16 @@ and wait for its result. A failed image check or browser test fails that sync.
 The publication PreSync gate checks the PR head SHA before deployment; the pod
 check proves the selected release is running at test start. A later PR push
 starts a new delivery event, so this is a point-in-time check. The chart adds
-the existing Testkube client network labels only for opted-in apps. Test
-execution does not yet publish a required GitHub merge status; that
-current-revision gate remains separate. Actual execution and network
-reachability still need live consumer proof.
+the existing Testkube client network labels only for opted-in apps. Automatic
+execution and network reachability were proven on one PR preview.
+
+For PR previews with the publication check enabled, the chart also reports a
+fixed `deployed-playwright` GitHub commit status. PreSync marks the current PR
+head pending, PostSync marks it successful only after the browser hook succeeds,
+and SyncFail reports failure. Each hook rechecks the live PR head before writing;
+older SHA results cannot satisfy a required status on a new commit. The token
+stays in `argocd` and has only PR-read/status-write permissions. Repository
+owners must require this context in branch protection for merge enforcement.
 
 ### Argo bootstrap — platform operator
 

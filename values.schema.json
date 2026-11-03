@@ -64,7 +64,8 @@
                 "enabled": {"type": "boolean"},
                 "path": {"type": "string", "pattern": "^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$"},
                 "image": {"type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$"},
-                "timeoutSeconds": {"type": "integer", "minimum": 60, "maximum": 3600}
+                "timeoutSeconds": {"type": "integer", "minimum": 60, "maximum": 3600},
+                "statusTokenSecret": {"type": "string", "minLength": 1}
               }
             }
           }
