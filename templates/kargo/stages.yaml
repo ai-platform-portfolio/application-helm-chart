@@ -18,8 +18,6 @@ spec:
   vars:
     - name: gitRepo
       value: {{ $id.url | quote }}
-    - name: appName
-      value: {{ printf "%s-%s" $id.base $environment | quote }}
   requestedFreight:
     - origin: {kind: Warehouse, name: application}
       sources:
@@ -57,16 +55,6 @@ spec:
           config:
             path: ./out
             targetBranch: delivery
-
-        - uses: argocd-wait
-          retry:
-            # The first delivery pin can precede ApplicationSet creation.
-            errorThreshold: 12
-            timeout: 10m
-          config:
-            apps:
-              - name: {{ "${{ vars.appName }}" | quote }}
-                namespace: {{ $.Values.platform.argocd.namespace | quote }}
 
   verification:
     analysisTemplates: [{name: deployed-release}]
