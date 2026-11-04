@@ -1,6 +1,7 @@
 """Check that the PostSync gate rejects stale or absent runtime images."""
 
 import importlib.util
+from copy import deepcopy
 from pathlib import Path
 import unittest
 
@@ -38,6 +39,25 @@ class VerifyPodsTest(unittest.TestCase):
     def test_missing_pod_blocks_browser_test(self):
         with self.assertRaisesRegex(ValueError, "No running pod"):
             verify_pods.verify([], {"web": EXPECTED})
+
+    def test_rollout_checks_only_pods_selected_by_stable_service(self):
+        current = pod()
+        current["metadata"]["labels"]["rollouts-pod-template-hash"] = "new"
+        old = deepcopy(current)
+        old["metadata"]["name"] = "web-old"
+        old["metadata"]["labels"]["rollouts-pod-template-hash"] = "old"
+        old["spec"]["containers"][0]["image"] = "registry.example/web@sha256:" + "b" * 64
+        rollout = {"metadata": {"name": "web"}, "spec": {"strategy": {"canary": {"stableService": "web"}}},
+                   "status": {"stableRS": "new"}}
+        service = {"metadata": {"name": "web"}, "spec": {"selector": {"rollouts-pod-template-hash": "new"}}}
+        verify_pods.verify([old, current], {"web": EXPECTED}, [rollout], [service])
+
+    def test_rollout_rejects_stable_service_without_hash(self):
+        rollout = {"metadata": {"name": "web"}, "spec": {"strategy": {"canary": {"stableService": "web"}}},
+                   "status": {"stableRS": "new"}}
+        service = {"metadata": {"name": "web"}, "spec": {"selector": {}}}
+        with self.assertRaisesRegex(ValueError, "does not select the promoted"):
+            verify_pods.verify([pod()], {"web": EXPECTED}, [rollout], [service])
 
 
 if __name__ == "__main__":

@@ -9,7 +9,9 @@ import urllib.parse
 import urllib.request
 
 
-def verify(pods, expected):
+def verify(pods, expected, rollouts=None, services=None):
+    rollouts = {item["metadata"]["name"]: item for item in (rollouts or [])}
+    services = {item["metadata"]["name"]: item for item in (services or [])}
     seen = {component: 0 for component in expected}
     for pod in pods:
         metadata = pod.get("metadata", {})
@@ -18,6 +20,15 @@ def verify(pods, expected):
         component = metadata.get("labels", {}).get("app.kubernetes.io/component")
         if component not in expected:
             continue
+        rollout = rollouts.get(component)
+        if rollout:
+            stable_hash = rollout.get("status", {}).get("stableRS")
+            stable_name = rollout["spec"]["strategy"]["canary"]["stableService"]
+            selector = services.get(stable_name, {}).get("spec", {}).get("selector", {})
+            if not stable_hash or selector.get("rollouts-pod-template-hash") != stable_hash:
+                raise ValueError(f"Stable Service {stable_name} does not select the promoted {component} ReplicaSet")
+            if any(metadata.get("labels", {}).get(key) != value for key, value in selector.items()):
+                continue
         name = metadata.get("name", "unknown")
         containers = {item["name"]: item for item in pod.get("spec", {}).get("containers", [])}
         statuses = {item["name"]: item for item in pod.get("status", {}).get("containerStatuses", [])}
@@ -40,18 +51,25 @@ def main():
     expected = json.loads(os.environ["EXPECTED_IMAGES"])
     selector = urllib.parse.quote("app.kubernetes.io/instance=" + os.environ["INSTANCE"], safe="")
     namespace = urllib.parse.quote(os.environ["NAMESPACE"], safe="")
-    url = f"https://kubernetes.default.svc/api/v1/namespaces/{namespace}/pods?labelSelector={selector}"
     token = Path("/var/run/kubernetes/token").read_text().strip()
-    request = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
     context = ssl.create_default_context(cafile="/var/run/kubernetes/ca.crt")
-    with urllib.request.urlopen(request, context=context, timeout=10) as response:
-        body = response.read(2 * 1024 * 1024 + 1)
-    if len(body) > 2 * 1024 * 1024:
-        raise ValueError("Pod list response is too large")
-    result = json.loads(body)
-    if result.get("metadata", {}).get("continue"):
-        raise ValueError("Pod list is incomplete")
-    verify(result.get("items", []), expected)
+
+    def list_resources(api_path, kind):
+        url = f"https://kubernetes.default.svc/{api_path}/namespaces/{namespace}/{kind}?labelSelector={selector}"
+        request = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+        with urllib.request.urlopen(request, context=context, timeout=10) as response:
+            body = response.read(2 * 1024 * 1024 + 1)
+        if len(body) > 2 * 1024 * 1024:
+            raise ValueError("Resource list response is too large")
+        result = json.loads(body)
+        if result.get("metadata", {}).get("continue"):
+            raise ValueError("Resource list is incomplete")
+        return result.get("items", [])
+
+    pods = list_resources("api/v1", "pods")
+    services = list_resources("api/v1", "services")
+    rollouts = list_resources("apis/argoproj.io/v1alpha1", "rollouts")
+    verify(pods, expected, rollouts, services)
     print("Ready pods use the digest-pinned images from this release")
 
 
