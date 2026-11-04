@@ -1,4 +1,6 @@
 {{/* Used for normal ownership and the empty PostDelete desired state. */}}
+{{/* Azure Flexible Server uses Atlas's native azure_db_token data source for short-lived Entra authentication; ASO owns the Azure resources.
+     See https://atlasgo.io/hcl/config#data-azure_db_token and https://atlasgo.io/integrations/kubernetes/project-configuration. */ -}}
 {{- define "application.roleSchemaSpec" -}}
 {{- $atlas := .Values.platform.atlas }}
 {{- $managed := eq .Values.platform.postgres.backend "azure" }}
