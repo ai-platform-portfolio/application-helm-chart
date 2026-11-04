@@ -247,7 +247,8 @@
               "type": "object", "additionalProperties": false,
               "properties": {
                 "serverName": {"type": "string"},
-                "serverResourceGroup": {"type": "string"}
+                "serverResourceGroup": {"type": "string"},
+                "caBundlePath": {"type": "string", "minLength": 1}
               }
             },
             "databaseReclaimPolicy": { "enum": ["retain", "delete"] }

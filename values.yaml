@@ -101,6 +101,7 @@ platform:
     azure:
       serverName: ""
       serverResourceGroup: ""
+      caBundlePath: /etc/ssl/certs/ca-certificates.crt
 
   atlas:
     namespace: atlas-system
