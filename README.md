@@ -325,12 +325,21 @@ callers when a Deployment adopts a Rollout. The default strategy sends 20% of
 route traffic to the candidate, then blocks on a Job that calls the candidate
 Service at the component's `readinessPath` (or `healthPath`). A non-2xx response,
 connection error or timeout aborts promotion. After success, Rollouts sets the
-weight to 100%. The chart marks only the Service's Rollouts hash selector and
-the two HTTPRoute weights as controller-owned, and its Argo registration uses
-`RespectIgnoreDifferences=true` during sync. Set `platform.rollout.steps` only
+weight to 100%. The chart's Argo registration ignores only the Service's
+Rollouts hash selector and the canary route weights/marker, and uses
+`RespectIgnoreDifferences=true` during sync. These rules live on the generated
+Application: resource annotations alone did not preserve selectors during sync
+with the installed Argo version. Set `platform.rollout.steps` only
 when supplying a complete native Rollouts strategy with an equivalent blocking
 candidate gate. The post-deploy Playwright check still validates the public
 application after the Rollout completes; it does not replace candidate analysis.
+
+Candidates that never become Ready cannot reach analysis. The chart therefore
+enables native `progressDeadlineAbort` with a 180-second progress deadline.
+Operators can override these under `platform.rollout` for applications with
+longer startup requirements. The deadline measures lack of progress, rather
+than total rollout duration; an exceeded deadline aborts the candidate and
+preserves the stable version.
 
 An aborted Rollout preserves stable traffic but does not change the selected
 OCI release. Restore the previous immutable release in the delivery branch to

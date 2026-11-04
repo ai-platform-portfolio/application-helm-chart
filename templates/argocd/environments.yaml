@@ -75,6 +75,8 @@ spec:
                 oidcIssuerUrl: {{ required "platform.azure.oidcIssuerUrl is required" $.Values.platform.azure.oidcIssuerUrl | quote }}
                 location: {{ required "platform.azure.location is required" $.Values.platform.azure.location | quote }}
                 identityResourceGroup: {{ required "platform.azure.identityResourceGroup is required" $.Values.platform.azure.identityResourceGroup | quote }}
+      ignoreDifferences:
+        {{- include "application.rolloutDiff" $name | nindent 8 }}
       syncPolicy:
         automated: {prune: true, selfHeal: true}
         retry:

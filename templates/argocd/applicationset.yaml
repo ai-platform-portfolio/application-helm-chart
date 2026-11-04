@@ -73,6 +73,8 @@ spec:
                 sharedListener: {{ $preview.sharedListener | quote }}
               lifecycle:
                 cleanup: {enabled: true}
+      ignoreDifferences:
+        {{- include "application.rolloutDiff" $name | nindent 8 }}
       syncPolicy:
         automated: {prune: true, selfHeal: true}
         retry:

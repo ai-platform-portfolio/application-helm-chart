@@ -212,6 +212,8 @@
         "rollout": {
           "type": "object", "additionalProperties": false,
           "properties": {
+            "progressDeadlineSeconds": {"type": "integer", "minimum": 30, "maximum": 3600},
+            "progressDeadlineAbort": {"type": "boolean"},
             "maxSurge": {"type": "integer", "minimum": 0},
             "maxUnavailable": {"type": "integer", "minimum": 0},
             "initialStableWeight": {"type": "integer", "minimum": 0, "maximum": 100},

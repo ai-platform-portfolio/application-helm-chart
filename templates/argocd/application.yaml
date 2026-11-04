@@ -31,6 +31,8 @@ spec:
     - repoURL: {{ required "platform.argocd.repository is required" $argo.repository | quote }}
       targetRevision: {{ required "platform.argocd.revision must pin app values" $argo.revision | quote }}
       ref: application
+  ignoreDifferences:
+    {{- include "application.rolloutDiff" .Values.namespace | nindent 4 }}
   # Cleanup is opt-in. PostDelete must succeed before deletion completes.
   syncPolicy:
     retry:
