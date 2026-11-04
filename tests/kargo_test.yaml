@@ -28,7 +28,8 @@ tests:
       - equal: {path: 'spec.requestedFreight[0].sources.stages[0]', value: staging}
       - equal: {path: 'spec.promotionTemplate.spec.steps[1].config.path', value: ./out/deploy/environments/production/release.yaml}
       - matchRegex: {path: 'spec.promotionTemplate.spec.steps[1].config.contents', pattern: 'version: "\$\{\{ chartFrom\('}
-      - equal: {path: 'spec.promotionTemplate.spec.steps[4].retry', value: {errorThreshold: 12, timeout: 10m}}
+      - lengthEqual: {path: 'spec.promotionTemplate.spec.steps', count: 4}
+      - equal: {path: 'spec.verification.analysisTemplates[0].name', value: deployed-release}
 
   - it: discovers only the published main OCI chart for this repository
     template: templates/kargo/project.yaml
