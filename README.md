@@ -515,6 +515,10 @@ source SHA, image digests and migration version. Production can name staging as
 requires Argo to finish the selected version's PostSync browser hook before
 making that Freight available downstream. Kargo promotion remains manual by
 default. An earlier Freight is a rollback without replacing the database.
+The first promotion retries while ApplicationSet creates its Argo Application;
+the subsequent health wait has a ten-minute timeout. The PR publication PreSync
+gate applies only to previews; persistent environments retain the exact-version
+deployed browser status check.
 
 The operator supplies `platform.kargo.github` App ID, installation ID and Key
 Vault key reference only when rendering the registration. The generated Kargo
