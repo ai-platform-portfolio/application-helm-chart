@@ -21,6 +21,20 @@ tests:
       - notExists: {path: spec.credentials}
       - matchRegex: {path: spec.config, pattern: 'data "azure_db_token" "db"'}
 
+  - it: scopes access and application migrations to public without scoping role identity
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    template: templates/atlas.yaml
+    documentSelector: {path: spec.revisionsSchema, value: atlas_access_revisions}
+    asserts:
+      - matchRegex: {path: spec.config, pattern: 'search_path=public&sslmode=verify-full'}
+
+  - it: keeps identity migration database scoped
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    template: templates/atlas.yaml
+    documentSelector: {path: spec.revisionsSchema, value: atlas_identity_revisions}
+    asserts:
+      - notMatchRegex: {path: spec.config, pattern: 'search_path='}
+
   - it: creates independent persistent registrations from one repository intent
     values: [../examples/azure-managed.yaml, ../examples/persistent-registration.yaml]
     template: templates/argocd/environments.yaml

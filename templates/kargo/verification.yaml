@@ -5,6 +5,10 @@
 {{- range $environment := keys .Values.platform.argocd.environments.targets | sortAlpha -}}
 {{- $names = append $names (printf "%s-%s" $id.base $environment) -}}
 {{- end -}}
+{{- $checks := list
+  (dict "name" "release" "path" ".status.operationState.syncResult.revision" "value" "{{args.version}}")
+  (dict "name" "operation" "path" ".status.operationState.phase" "value" "Succeeded")
+  (dict "name" "sync" "path" ".status.sync.status" "value" "Synced") -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -23,7 +27,7 @@ rules:
   - apiGroups: [argoproj.io]
     resources: [applications]
     resourceNames: {{ $names | toJson }}
-    verbs: [get]
+    verbs: [get, list, watch]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -42,7 +46,7 @@ roleRef:
 
 ---
 # Argo can be Healthy for the previous release before the Git file refreshes.
-# Verify the selected chart version and completed PostSync browser hook together.
+# Wait for the selected revision, its completed PostSync hook, sync and health.
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
@@ -65,25 +69,18 @@ spec:
               spec:
                 serviceAccountName: kargo-verifier
                 restartPolicy: Never
-                containers:
-                  - name: verify
-                    image: {{ .Values.platform.kargo.verification.image | quote }}
-                    command: [/bin/sh, -ec]
+                initContainers:
+                  {{- range $check := $checks }}
+                  - name: {{ printf "wait-%s" $check.name }}
+                    image: {{ $.Values.platform.kargo.verification.image | quote }}
                     args:
-                      - |
-                        expected='{{ "{{args.version}}" }}'
-                        application='{{ "{{args.application}}" }}'
-                        attempt=0
-                        while [ "$attempt" -lt 120 ]; do
-                          attempt=$((attempt + 1))
-                          observed="$(kubectl get application "$application" -n {{ $namespace | quote }} -o jsonpath='{.spec.source.targetRevision}{" "}{.status.sync.status}{" "}{.status.health.status}{" "}{.status.operationState.phase}' 2>/dev/null || true)"
-                          if [ "$observed" = "$expected Synced Healthy Succeeded" ]; then
-                            exit 0
-                          fi
-                          sleep 5
-                        done
-                        echo "Application did not complete the selected release" >&2
-                        exit 1
+                      - wait
+                      - applications.argoproj.io
+                      - {{ printf "--namespace=%s" $namespace | quote }}
+                      - {{ printf "--field-selector=metadata.name=%s" "{{args.application}}" | quote }}
+                      - {{ printf "--for=jsonpath={%s}=%s" $check.path $check.value | quote }}
+                      - --timeout=10m
+                      - --cache-dir=/tmp
                     resources:
                       requests: {cpu: 10m, memory: 32Mi}
                       limits: {memory: 64Mi}
@@ -91,4 +88,30 @@ spec:
                       allowPrivilegeEscalation: false
                       readOnlyRootFilesystem: true
                       capabilities: {drop: [ALL]}
+                    volumeMounts:
+                      - {name: kubectl-cache, mountPath: /tmp}
+                  {{- end }}
+                containers:
+                  - name: verify
+                    image: {{ .Values.platform.kargo.verification.image | quote }}
+                    args:
+                      - wait
+                      - applications.argoproj.io
+                      - {{ printf "--namespace=%s" $namespace | quote }}
+                      - {{ printf "--field-selector=metadata.name=%s" "{{args.application}}" | quote }}
+                      - "--for=jsonpath={.status.health.status}=Healthy"
+                      - --timeout=10m
+                      - --cache-dir=/tmp
+                    resources:
+                      requests: {cpu: 10m, memory: 32Mi}
+                      limits: {memory: 64Mi}
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities: {drop: [ALL]}
+                    volumeMounts:
+                      - {name: kubectl-cache, mountPath: /tmp}
+                volumes:
+                  - name: kubectl-cache
+                    emptyDir: {}
 {{- end -}}
