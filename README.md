@@ -525,6 +525,17 @@ PostDelete cleanup still require live proof. Relevant references:
 [operator project configuration](https://atlasgo.io/integrations/kubernetes/project-configuration),
 and [operator 0.8.4 controller](https://github.com/ariga/atlas-operator/blob/v0.8.4/internal/controller/atlasschema_controller.go).
 
+If Atlas is removed later, replace the whole database lifecycle before deleting
+this hint: `templates/_database.tpl` derives roles, Entra mapping, access SQL and
+migration resources from database intent; `templates/atlas.yaml` reconciles them;
+`templates/lifecycle/cleanup.yaml` drops the owned roles after application
+deletion. The shared `gitops` Atlas package supplies the operator, identity,
+token and access policy. The application publishes versioned SQL from its
+`migrations/` directory and `.github/workflows/publish.yml`. A replacement must
+preserve per-repository/environment role identity, ordered creation, revision
+history, promotion and scoped cleanup. Removing only `AtlasSchema` would leave
+SQL roles behind; removing only the operator would strand migrations and cleanup.
+
 Render this profile with `examples/managed.yaml` and
 `examples/azure-managed.yaml`. The Azure identity and database owner CRs are
 deleted with an environment; the shared server is owned separately. Database
