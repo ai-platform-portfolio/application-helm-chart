@@ -319,6 +319,24 @@ The map key becomes the workload and Service name. `delivery` defaults to
 internal component. A component may override `replicas` and `resources` when it
 needs more capacity. Images must use immutable digests.
 
+A Rollout keeps the component's usual Service as its stable endpoint and adds
+`<component>-canary` for candidate traffic. This preserves existing in-cluster
+callers when a Deployment adopts a Rollout. The default strategy sends 20% of
+route traffic to the candidate, then blocks on a Job that calls the candidate
+Service at the component's `readinessPath` (or `healthPath`). A non-2xx response,
+connection error or timeout aborts promotion. After success, Rollouts sets the
+weight to 100%. The chart marks only the Service's Rollouts hash selector and
+the two HTTPRoute weights as controller-owned, and its Argo registration uses
+`RespectIgnoreDifferences=true` during sync. Set `platform.rollout.steps` only
+when supplying a complete native Rollouts strategy with an equivalent blocking
+candidate gate. The post-deploy Playwright check still validates the public
+application after the Rollout completes; it does not replace candidate analysis.
+
+An aborted Rollout preserves stable traffic but does not change the selected
+OCI release. Restore the previous immutable release in the delivery branch to
+make rollback durable. Keep database migrations compatible with both versions
+during this application rollback.
+
 Add named `sidecars` and `initContainers` to a component when its pod needs
 more containers. The map key becomes the container name. These entries accept
 Kubernetes container fields such as `command`, `args`, `env`, `ports`, `resources`

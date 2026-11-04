@@ -1,0 +1,48 @@
+{{- include "application.defaults" . -}}
+{{- range $name, $component := .Values.components }}
+{{- if eq $component.delivery "rollout" }}
+{{- $namespace := required "namespace is required" $.Values.namespace -}}
+{{- $path := coalesce $component.readinessPath $component.healthPath "/" -}}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ $name }}-candidate
+  namespace: {{ $namespace | quote }}
+  labels:
+    {{- include "application.labels" (dict "root" $ "name" $name) | nindent 4 }}
+spec:
+  metrics:
+    - name: candidate-ready
+      failureLimit: 0
+      provider:
+        job:
+          spec:
+            activeDeadlineSeconds: {{ $.Values.platform.rollout.analysis.timeoutSeconds }}
+            backoffLimit: 0
+            template:
+              spec:
+                automountServiceAccountToken: false
+                restartPolicy: Never
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 10001
+                  runAsGroup: 10001
+                  seccompProfile: {type: RuntimeDefault}
+                containers:
+                  - name: candidate-ready
+                    image: {{ $.Values.platform.rollout.analysis.image | quote }}
+                    command:
+                      - python3
+                      - -c
+                      - import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=15).read()
+                      - {{ printf "http://%s-canary.%s.svc.cluster.local:%d%s" $name $namespace (int $component.port) $path | quote }}
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities: {drop: [ALL]}
+                    resources:
+                      requests: {cpu: 10m, memory: 32Mi}
+                      limits: {memory: 64Mi}
+---
+{{- end }}
+{{- end }}

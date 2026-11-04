@@ -209,6 +209,24 @@
             }
           }
         },
+        "rollout": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "maxSurge": {"type": "integer", "minimum": 0},
+            "maxUnavailable": {"type": "integer", "minimum": 0},
+            "initialStableWeight": {"type": "integer", "minimum": 0, "maximum": 100},
+            "initialCanaryWeight": {"type": "integer", "minimum": 0, "maximum": 100},
+            "canaryWeight": {"type": "integer", "minimum": 1, "maximum": 99},
+            "analysis": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "image": {"type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$"},
+                "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 3600}
+              }
+            },
+            "steps": {"type": "array", "items": {"type": "object"}}
+          }
+        },
         "syncWaves": {
           "type": "object",
           "properties": {

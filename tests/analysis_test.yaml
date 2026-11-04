@@ -1,0 +1,39 @@
+suite: Candidate analysis
+
+templates:
+  - templates/analysis.yaml
+
+release:
+  name: poc
+
+tests:
+
+  - it: checks the candidate Service with the component readiness path
+    values: [../examples/application.yaml, ../examples/staging.yaml]
+
+    asserts:
+      - hasDocuments:
+          count: 1
+
+      - equal:
+          path: metadata.name
+          value: backend-candidate
+
+      - equal:
+          path: spec.metrics[0].provider.job.spec.template.spec.containers[0].command[3]
+          value: http://backend-canary.poc-staging.svc.cluster.local:8000/api/healthz
+
+      - equal:
+          path: spec.metrics[0].provider.job.spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: renders no analysis for deployment components
+    set:
+      namespace: app
+      components.frontend:
+        image: example.invalid/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        port: 8080
+
+    asserts:
+      - hasDocuments:
+          count: 0

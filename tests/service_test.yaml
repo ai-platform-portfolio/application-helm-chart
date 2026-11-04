@@ -30,6 +30,15 @@ tests:
           path: metadata.name
           value: frontend
 
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/ignore-differences"]
+          value: |
+            jsonPointers:
+              - /spec/selector/rollouts-pod-template-hash
+        documentSelector:
+          path: metadata.name
+          value: backend
+
   - it: renders staging Service resources
     values:
       - ../examples/application.yaml

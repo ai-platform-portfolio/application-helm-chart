@@ -36,5 +36,5 @@ spec:
     retry:
       limit: 3
       backoff: {duration: 10s, factor: 2, maxDuration: 1m}
-    syncOptions: [ServerSideApply=true, PruneLast=true]
+    syncOptions: [ServerSideApply=true, PruneLast=true, RespectIgnoreDifferences=true]
 {{- end }}

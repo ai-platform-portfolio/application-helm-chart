@@ -2,7 +2,7 @@
 {{- range $name, $component := .Values.components }}
 {{- $services := list $name }}
 {{- if eq $component.delivery "rollout" }}
-  {{- $services = list (printf "%s-stable" $name) (printf "%s-canary" $name) }}
+  {{- $services = list $name (printf "%s-canary" $name) }}
 {{- end }}
 {{- range $service := $services }}
 apiVersion: v1
@@ -15,6 +15,16 @@ metadata:
   {{- if hasKey $.Values.platform.syncWaves "service" }}
   annotations:
     argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "service" | quote }}
+    {{- if eq $component.delivery "rollout" }}
+    argocd.argoproj.io/ignore-differences: |
+      jsonPointers:
+        - /spec/selector/rollouts-pod-template-hash
+    {{- end }}
+  {{- else if eq $component.delivery "rollout" }}
+  annotations:
+    argocd.argoproj.io/ignore-differences: |
+      jsonPointers:
+        - /spec/selector/rollouts-pod-template-hash
   {{- end }}
 spec:
   selector:

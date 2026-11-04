@@ -22,7 +22,7 @@ spec:
 
   strategy:
     canary:
-      stableService: {{ $name }}-stable
+      stableService: {{ $name }}
       canaryService: {{ $name }}-canary
       maxSurge: {{ $.Values.platform.rollout.maxSurge }}
       maxUnavailable: {{ $.Values.platform.rollout.maxUnavailable }}
@@ -33,7 +33,15 @@ spec:
             httpRoute: {{ $name }}
       {{- end }}
       steps:
+        {{- if $.Values.platform.rollout.steps }}
         {{- toYaml $.Values.platform.rollout.steps | nindent 8 }}
+        {{- else }}
+        - setWeight: {{ $.Values.platform.rollout.canaryWeight }}
+        - analysis:
+            templates:
+              - templateName: {{ $name }}-candidate
+        - setWeight: 100
+        {{- end }}
 
   template:
     {{- include "application.podTemplate" (dict "root" $ "name" $name "component" $component) | nindent 4 }}
