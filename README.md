@@ -497,6 +497,45 @@ The API receives a password-free connection URL and its workload identity client
 ID. The application obtains short-lived Entra database tokens. CNPG previews
 continue using their client certificates.
 
+### Atlas operator Azure compatibility note
+
+The Azure role-only `AtlasSchema` uses Atlas's native `azure_db_token` HCL data
+source for its **real** connection. Atlas documents that role-only schemas need
+no dev database, but the pinned operator 0.8.4 still rejects a custom-HCL
+target without a `dev` URL. It only starts its automatic isolated PostgreSQL
+dev pod when it can infer the target driver from resource-level connection
+metadata. This chart therefore renders a passwordless `spec.credentials` hint
+(`postgres`, server host, port and `postgres` database) for Azure role schemas,
+including the PostDelete empty-state schema. The operator uses the hint to
+select the dev pod; its HCL merge overrides the hint URL with the token-backed
+target URL before Atlas connects. This does **not** create another Azure server
+or a standing dev database. It does create the operator's temporary dev pod.
+
+This is a compatibility dependency on operator 0.8.4 behavior, **not** Atlas's
+documented way to combine `credentials` with a custom URL. The operator docs
+advise against that combination. Recheck the controller's `DatabaseURL`, devDB
+selection and config merge before upgrading it. Remove the hint once the
+operator accepts role-only custom-HCL schemas without a dev URL or derives its
+dev driver from HCL. Keep the Azure token data source, ASO identity and role
+ownership separate during that removal. A direct patch of the staging
+`AtlasSchema` proved Ready/Applied and creation of its scoped SQL role with
+operator 0.8.4. The published chart, later migrations, runtime permissions and
+PostDelete cleanup still require live proof. Relevant references:
+[Atlas role-only schema mode](https://atlasgo.io/atlas-schema/projects#manage-roles-and-users-only),
+[operator project configuration](https://atlasgo.io/integrations/kubernetes/project-configuration),
+and [operator 0.8.4 controller](https://github.com/ariga/atlas-operator/blob/v0.8.4/internal/controller/atlasschema_controller.go).
+
+If Atlas is removed later, replace the whole database lifecycle before deleting
+this hint: `templates/_database.tpl` derives roles, Entra mapping, access SQL and
+migration resources from database intent; `templates/atlas.yaml` reconciles them;
+`templates/lifecycle/cleanup.yaml` drops the owned roles after application
+deletion. The shared `gitops` Atlas package supplies the operator, identity,
+token and access policy. The application publishes versioned SQL from its
+`migrations/` directory and `.github/workflows/publish.yml`. A replacement must
+preserve per-repository/environment role identity, ordered creation, revision
+history, promotion and scoped cleanup. Removing only `AtlasSchema` would leave
+SQL roles behind; removing only the operator would strand migrations and cleanup.
+
 Render this profile with `examples/managed.yaml` and
 `examples/azure-managed.yaml`. The Azure identity and database owner CRs are
 deleted with an environment; the shared server is owned separately. Database
@@ -515,10 +554,10 @@ source SHA, image digests and migration version. Production can name staging as
 requires Argo to finish the selected version's PostSync browser hook before
 making that Freight available downstream. Kargo promotion remains manual by
 default. An earlier Freight is a rollback without replacing the database.
-The first promotion retries while ApplicationSet creates its Argo Application;
-the subsequent health wait has a ten-minute timeout. The PR publication PreSync
-gate applies only to previews; persistent environments retain the exact-version
-deployed browser status check.
+Stage verification waits for ApplicationSet to select the release and for Argo
+to complete the deployment; promotion itself only writes the release pin. The
+PR publication PreSync gate applies only to previews; persistent environments
+retain the exact-version deployed browser status check.
 
 The operator supplies `platform.kargo.github` App ID, installation ID and Key
 Vault key reference only when rendering the registration. The generated Kargo

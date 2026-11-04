@@ -12,6 +12,19 @@ tests:
       - hasDocuments:
           count: 0
 
+  - it: gives the pinned operator an Azure driver hint while HCL owns authentication
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    documentSelector: {path: kind, value: AtlasSchema}
+    asserts:
+      - equal:
+          path: spec.credentials
+          value: {scheme: postgres, host: example-pg.postgres.database.azure.com, port: 5432, database: postgres}
+      - notExists: {path: spec.credentials.user}
+      - notExists: {path: spec.credentials.password}
+      - notExists: {path: spec.urlFrom}
+      - matchRegex: {path: spec.config, pattern: 'data "azure_db_token" "db"'}
+      - matchRegex: {path: spec.config, pattern: 'url = urluserinfo\('}
+
   - it: scopes role reconciliation to the explicit platform ownership list
     values:
       - fixtures/postgres.yaml

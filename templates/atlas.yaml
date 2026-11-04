@@ -24,7 +24,17 @@
 
 spec:
   envName: {{ $atlas.roleEnvironment | quote }}
-  {{- if not $managed }}
+  {{- if $managed }}
+  {{/* Atlas operator 0.8.4 derives its temporary dev pod from spec.credentials
+       before merging config. HCL below overrides this unauthenticated URL with
+       azure_db_token. Remove this hint when the operator handles role-only
+       custom-HCL schemas without demanding a dev URL. */}}
+  credentials:
+    scheme: postgres
+    host: {{ printf "%s.postgres.database.azure.com" .Values.platform.postgres.azure.serverName | quote }}
+    port: 5432
+    database: postgres
+  {{- else }}
   urlFrom:
     secretKeyRef: {name: {{ $atlas.roleConnectionSecret | quote }}, key: {{ $atlas.connectionKey | quote }}}
   {{- end }}
