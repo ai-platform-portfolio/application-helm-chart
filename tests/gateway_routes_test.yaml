@@ -168,12 +168,22 @@ tests:
       - equal:
           path: spec.rules[0].backendRefs
           value:
-            - name: backend-stable
+            - name: backend
               port: 8000
               weight: 100
             - name: backend-canary
               port: 8000
               weight: 0
+        documentSelector:
+          path: metadata.name
+          value: backend
+
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/ignore-differences"]
+          value: |
+            jsonPointers:
+              - /spec/rules/0/backendRefs/0/weight
+              - /spec/rules/0/backendRefs/1/weight
         documentSelector:
           path: metadata.name
           value: backend
@@ -234,7 +244,7 @@ tests:
       - equal:
           path: spec.rules[0].backendRefs
           value:
-            - name: backend-stable
+            - name: backend
               port: 8000
               weight: 100
             - name: backend-canary
@@ -265,7 +275,7 @@ tests:
       - equal:
           path: spec.rules[0].backendRefs
           value:
-            - name: backend-stable
+            - name: backend
               port: 8000
               weight: 100
             - name: backend-canary
@@ -415,7 +425,7 @@ tests:
       - equal:
           path: spec.rules[0].backendRefs
           value:
-            - name: backend-stable
+            - name: backend
               port: 8000
               weight: 100
             - name: backend-canary

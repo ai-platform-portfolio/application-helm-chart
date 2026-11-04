@@ -28,6 +28,12 @@ rules:
   - apiGroups: ['']
     resources: [pods]
     verbs: [list]
+  - apiGroups: ['']
+    resources: [services]
+    verbs: [list]
+  - apiGroups: [argoproj.io]
+    resources: [rollouts]
+    verbs: [list]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1

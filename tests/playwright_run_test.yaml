@@ -20,6 +20,10 @@ tests:
       - hasDocuments: {count: 4}
       - documentIndex: 1
         equal: {path: 'rules[0].verbs', value: [list]}
+      - documentIndex: 1
+        equal: {path: 'rules[1].resources', value: [services]}
+      - documentIndex: 1
+        equal: {path: 'rules[2].resources', value: [rollouts]}
       - documentIndex: 3
         equal: {path: metadata.namespace, value: orders-pr-42}
       - documentIndex: 3

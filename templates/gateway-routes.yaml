@@ -46,6 +46,18 @@ metadata:
   {{- if hasKey $.Values.platform.syncWaves "httpRoute" }}
   annotations:
     argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "httpRoute" | quote }}
+    {{- if eq $component.delivery "rollout" }}
+    argocd.argoproj.io/ignore-differences: |
+      jsonPointers:
+        - /spec/rules/0/backendRefs/0/weight
+        - /spec/rules/0/backendRefs/1/weight
+    {{- end }}
+  {{- else if eq $component.delivery "rollout" }}
+  annotations:
+    argocd.argoproj.io/ignore-differences: |
+      jsonPointers:
+        - /spec/rules/0/backendRefs/0/weight
+        - /spec/rules/0/backendRefs/1/weight
   {{- end }}
 spec:
   hostnames:
@@ -69,7 +81,7 @@ spec:
             value: {{ $component.route.path | quote }}
       backendRefs:
         {{- if eq $component.delivery "rollout" }}
-        - name: {{ $name }}-stable
+        - name: {{ $name }}
           port: {{ $component.port }}
           weight: {{ $.Values.platform.rollout.initialStableWeight }}
         - name: {{ $name }}-canary

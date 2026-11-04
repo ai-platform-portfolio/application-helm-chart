@@ -23,7 +23,16 @@ tests:
 
       - equal:
           path: spec.strategy.canary.stableService
-          value: backend-stable
+          value: backend
+
+      - equal:
+          path: spec.strategy.canary.steps
+          value:
+            - setWeight: 20
+            - analysis:
+                templates:
+                  - templateName: backend-candidate
+            - setWeight: 100
 
       - equal:
           path: spec.strategy.canary.trafficRouting.plugins["argoproj-labs/gatewayAPI"].httpRoute
