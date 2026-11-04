@@ -6,6 +6,7 @@
 {{- $names = append $names (printf "%s-%s" $id.base $environment) -}}
 {{- end -}}
 {{- $checks := list
+  (dict "name" "application" "create" true)
   (dict "name" "release" "path" ".status.operationState.syncResult.revision" "value" "{{args.version}}")
   (dict "name" "operation" "path" ".status.operationState.phase" "value" "Succeeded")
   (dict "name" "sync" "path" ".status.sync.status" "value" "Synced") -}}
@@ -75,10 +76,18 @@ spec:
                     image: {{ $.Values.platform.kargo.verification.image | quote }}
                     args:
                       - wait
+                      {{- if $check.create }}
+                      - {{ printf "applications.argoproj.io/%s" "{{args.application}}" | quote }}
+                      {{- else }}
                       - applications.argoproj.io
+                      {{- end }}
                       - {{ printf "--namespace=%s" $namespace | quote }}
+                      {{- if $check.create }}
+                      - --for=create
+                      {{- else }}
                       - {{ printf "--field-selector=metadata.name=%s" "{{args.application}}" | quote }}
                       - {{ printf "--for=jsonpath={%s}=%s" $check.path $check.value | quote }}
+                      {{- end }}
                       - --timeout=10m
                       - --cache-dir=/tmp
                     resources:
