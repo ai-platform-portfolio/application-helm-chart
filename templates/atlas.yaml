@@ -215,6 +215,11 @@ spec:
   envName: {{ $.Values.namespace | quote }}
   config: |
     data "azure_db_token" "db" {}
+    {{/* Keep unrelated Atlas revision schemas outside each schema-scoped migration's clean-database check. */}}
+    {{- $query := "sslmode=verify-full" }}
+    {{- if $migration.schema }}
+    {{- $query = printf "search_path=%s&%s" ($migration.schema | urlquery) $query }}
+    {{- end }}
     {{- if $migration.principalIdConfigMap }}
     variable "principal_id" { type = string }
     {{- end }}
@@ -233,7 +238,7 @@ spec:
     {{- end }}
     env {
       name = atlas.env
-      url = urluserinfo({{ printf "postgres://%s.postgres.database.azure.com:5432/%s?sslmode=verify-full" $.Values.platform.postgres.azure.serverName $database.name | toJson }}, {{ required "platform.atlas.azureAdminUser is required" $atlas.azureAdminUser | toJson }}, data.azure_db_token.db)
+      url = urluserinfo({{ printf "postgres://%s.postgres.database.azure.com:5432/%s?%s" $.Values.platform.postgres.azure.serverName $database.name $query | toJson }}, {{ required "platform.atlas.azureAdminUser is required" $atlas.azureAdminUser | toJson }}, data.azure_db_token.db)
       {{- if $migration.local }}
       migration { dir = data.template_dir.migrations.url }
       {{- end }}

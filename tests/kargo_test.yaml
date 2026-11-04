@@ -57,3 +57,18 @@ tests:
     documentSelector: {path: kind, value: Project}
     asserts:
       - notEqual: {path: metadata.name, value: orders-11dd895de33a}
+
+  - it: verifies the exact release with the shell-free kubectl image
+    template: templates/kargo/verification.yaml
+    set:
+      platform.kargo.enabled: true
+      platform.argocd.repository: https://github.com/example/orders.git
+      platform.argocd.environments.targets.staging.hostname: staging.example.test
+      platform.kargo.github.appId: "123"
+      platform.kargo.github.installationId: "456"
+      platform.kargo.github.privateKeyRemoteKey: sample-key
+    documentSelector: {path: kind, value: AnalysisTemplate}
+    asserts:
+      - notExists: {path: 'spec.metrics[0].provider.job.spec.template.spec.containers[0].command'}
+      - equal: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[0].args[0]', value: wait}
+      - matchRegex: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[0].args[4]', pattern: 'operationState.syncResult.revision'}
