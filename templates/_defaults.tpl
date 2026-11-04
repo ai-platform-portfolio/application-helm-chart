@@ -53,8 +53,9 @@
 {{- $user := printf "app_%s_app" (replace "-" "_" $base) -}}
 {{- $database := index $.Values.postgres.databases $component.database -}}
 {{- $host := printf "%s.postgres.database.azure.com" $.Values.platform.postgres.azure.serverName -}}
+{{- $caBundle := required "platform.postgres.azure.caBundlePath is required" $.Values.platform.postgres.azure.caBundlePath -}}
 {{- $_ := set $component "identity" (printf "%s-runtime" $component.database) -}}
-{{- $_ := set $component "env" (concat (default list $component.env) (list (dict "name" $envName "value" (printf "postgresql://%s@%s:5432/%s?sslmode=verify-full" $user $host $database.name)) (dict "name" "DATABASE_AUTH" "value" "entra"))) -}}
+{{- $_ := set $component "env" (concat (default list $component.env) (list (dict "name" $envName "value" (printf "postgresql://%s@%s:5432/%s?sslmode=verify-full&sslrootcert=%s" $user $host $database.name ($caBundle | urlquery))) (dict "name" "DATABASE_AUTH" "value" "entra"))) -}}
 {{- else -}}
 {{- $_ := set $component "env" (append (default list $component.env) (dict "name" $envName "valueFrom" (dict "secretKeyRef" (dict "name" $secret "key" "url")))) -}}
 {{- end -}}

@@ -42,6 +42,13 @@ tests:
     asserts:
       - notMatchRegex: {path: spec.config, pattern: 'search_path='}
 
+  - it: verifies Azure runtime TLS with the image's system CA bundle
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    template: templates/deployment.yaml
+    documentSelector: {path: metadata.name, value: api}
+    asserts:
+      - matchRegex: {path: 'spec.template.spec.containers[0].env[0].value', pattern: 'sslmode=verify-full&sslrootcert=%2Fetc%2Fssl%2Fcerts%2Fca-certificates.crt'}
+
   - it: creates independent persistent registrations from one repository intent
     values: [../examples/azure-managed.yaml, ../examples/persistent-registration.yaml]
     template: templates/argocd/environments.yaml
