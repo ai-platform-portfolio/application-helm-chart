@@ -1,5 +1,5 @@
 {{- $check := .Values.platform.release.check -}}
-{{- if $check.enabled -}}
+{{- if and $check.enabled (not $check.environment) -}}
 {{- $_ := required "publication check requires platform.release.expectedRevision" .Values.platform.release.expectedRevision -}}
 {{- $_ := required "publication check requires repository" $check.repository -}}
 {{- $_ := required "publication check requires pullRequest" $check.pullRequest -}}

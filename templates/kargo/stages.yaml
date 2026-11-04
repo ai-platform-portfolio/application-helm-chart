@@ -59,6 +59,10 @@ spec:
             targetBranch: delivery
 
         - uses: argocd-wait
+          retry:
+            # The first delivery pin can precede ApplicationSet creation.
+            errorThreshold: 12
+            timeout: 10m
           config:
             apps:
               - name: {{ "${{ vars.appName }}" | quote }}
