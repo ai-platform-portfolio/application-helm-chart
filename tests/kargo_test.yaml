@@ -71,4 +71,5 @@ tests:
     asserts:
       - notExists: {path: 'spec.metrics[0].provider.job.spec.template.spec.containers[0].command'}
       - equal: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[0].args[0]', value: wait}
-      - matchRegex: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[0].args[4]', pattern: 'operationState.syncResult.revision'}
+      - equal: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[0].args[3]', value: '--for=create'}
+      - matchRegex: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[1].args[4]', pattern: 'operationState.syncResult.revision'}
