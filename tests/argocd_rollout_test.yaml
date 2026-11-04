@@ -1,0 +1,23 @@
+suite: Argo preserves Rollouts fields during sync
+
+templates:
+  - templates/argocd/applicationset.yaml
+
+tests:
+  - it: scopes controller-owned fields to the generated application namespace
+    set:
+      platform.argocd.previews.enabled: true
+      platform.argocd.repository: https://github.com/example/orders.git
+    asserts:
+      - equal:
+          path: spec.template.spec.ignoreDifferences[0].jsonPointers
+          value: [/spec/selector/rollouts-pod-template-hash]
+      - matchRegex:
+          path: spec.template.spec.ignoreDifferences[0].namespace
+          pattern: '^orders-[a-f0-9]+-pr-\{\{.number\}\}$'
+      - lengthEqual:
+          path: spec.template.spec.ignoreDifferences[1].jqPathExpressions
+          count: 2
+      - contains:
+          path: spec.template.spec.syncPolicy.syncOptions
+          content: RespectIgnoreDifferences=true
