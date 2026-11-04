@@ -1,0 +1,49 @@
+suite: Kargo persistent delivery
+
+release:
+  name: registration
+
+tests:
+  - it: restricts production Freight to staging and writes only its release file
+    template: templates/kargo/stages.yaml
+    set:
+      platform.kargo.enabled: true
+      platform.argocd.repository: https://github.com/example/orders.git
+      platform.argocd.environments.targets.staging.hostname: staging.example.test
+      platform.argocd.environments.targets.production.hostname: app.example.test
+      platform.argocd.environments.targets.production.from: staging
+      platform.kargo.github.appId: "123"
+      platform.kargo.github.installationId: "456"
+      platform.kargo.github.privateKeyRemoteKey: sample-key
+    documentSelector: {path: metadata.name, value: production}
+    asserts:
+      - equal: {path: 'spec.requestedFreight[0].sources.stages[0]', value: staging}
+      - equal: {path: 'spec.promotionTemplate.spec.steps[1].config.path', value: ./out/deploy/environments/production/release.yaml}
+      - matchRegex: {path: 'spec.promotionTemplate.spec.steps[1].config.contents', pattern: 'version: "\$\{\{ chartFrom\('}
+
+  - it: discovers only the published main OCI chart for this repository
+    template: templates/kargo/project.yaml
+    set:
+      platform.kargo.enabled: true
+      platform.argocd.repository: https://github.com/example/orders.git
+      platform.argocd.environments.targets.staging.hostname: staging.example.test
+      platform.kargo.github.appId: "123"
+      platform.kargo.github.installationId: "456"
+      platform.kargo.github.privateKeyRemoteKey: sample-key
+    documentSelector: {path: kind, value: Warehouse}
+    asserts:
+      - equal: {path: 'spec.subscriptions[0].chart.repoURL', value: oci://localacrk8s.azurecr.io/releases/example/orders/main/application}
+      - equal: {path: 'spec.subscriptions[0].chart.semverConstraint', value: ">=0.0.0-0"}
+
+  - it: gives a different repository a different project identity
+    template: templates/kargo/project.yaml
+    set:
+      platform.kargo.enabled: true
+      platform.argocd.repository: https://github.com/another/orders.git
+      platform.argocd.environments.targets.staging.hostname: staging.example.test
+      platform.kargo.github.appId: "123"
+      platform.kargo.github.installationId: "456"
+      platform.kargo.github.privateKeyRemoteKey: sample-key
+    documentSelector: {path: kind, value: Project}
+    asserts:
+      - notEqual: {path: metadata.name, value: orders-11dd895de33a}

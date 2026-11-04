@@ -1,0 +1,30 @@
+suite: Managed PostgreSQL and persistent registration
+
+release:
+  name: poc
+
+tests:
+  - it: creates an Azure database under the declared server
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    template: templates/postgres.yaml
+    asserts:
+      - equal: {path: kind, value: FlexibleServersDatabase}
+      - matchRegex: {path: spec.azureName, pattern: '^app_sample_app_poc_messages_[a-f0-9]{12}$'}
+      - equal: {path: spec.owner.armId, value: /subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/example-rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/example-pg}
+
+  - it: manages the runtime SQL login through Atlas and a separate identity mapping migration
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    template: templates/atlas.yaml
+    documentSelector: {path: kind, value: AtlasMigration, matchMany: true}
+    asserts:
+      - hasDocuments: {count: 3, filterAware: true}
+      - notExists: {path: spec.credentials}
+      - matchRegex: {path: spec.config, pattern: 'data "azure_db_token" "db"'}
+
+  - it: creates independent persistent registrations from one repository intent
+    values: [../examples/azure-managed.yaml, ../examples/persistent-registration.yaml]
+    template: templates/argocd/environments.yaml
+    documentSelector: {path: kind, value: ApplicationSet, matchMany: true}
+    asserts:
+      - hasDocuments: {count: 2, filterAware: true}
+      - matchRegex: {path: spec.template.spec.source.targetRevision, pattern: '\{\{\.release.version\}\}'}

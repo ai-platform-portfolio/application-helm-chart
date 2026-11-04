@@ -1,0 +1,17 @@
+# Platform-provided environment metadata; the application intent is in managed.yaml.
+platform:
+  postgres:
+    backend: azure
+    azure:
+      serverName: example-pg
+      serverResourceGroup: example-rg
+
+  atlas:
+    azureAdminUser: example-atlas-identity
+
+  azure:
+    subscriptionId: 00000000-0000-0000-0000-000000000001
+    tenantId: 00000000-0000-0000-0000-000000000002
+    oidcIssuerUrl: https://issuer.example.test/
+    location: uksouth
+    identityResourceGroup: example-rg

@@ -1,6 +1,7 @@
 {{/* Used for normal ownership and the empty PostDelete desired state. */}}
 {{- define "application.roleSchemaSpec" -}}
 {{- $atlas := .Values.platform.atlas }}
+{{- $managed := eq .Values.platform.postgres.backend "azure" }}
 {{- $scope := $atlas.roleScope }}
 {{- $hasPasswords := false }}
 {{- range $name, $role := .Values.postgres.roles }}
@@ -8,6 +9,8 @@
 {{- if or (not $role.login) $role.passwordSecret }}
 {{- fail (printf "certificate role %s requires login and must not set passwordSecret" $name) }}
 {{- end }}
+{{- else if eq (default "password" $role.authentication) "entra" }}
+{{- if or (not $role.login) $role.passwordSecret }}{{- fail (printf "Entra role %s requires login without a password" $name) }}{{- end }}
 {{- else if $role.login }}
 {{- $hasPasswords = true }}
 {{- $_ := required (printf "login role %s needs passwordSecret" $name) $role.passwordSecret }}
@@ -19,8 +22,10 @@
 
 spec:
   envName: {{ $atlas.roleEnvironment | quote }}
+  {{- if not $managed }}
   urlFrom:
     secretKeyRef: {name: {{ $atlas.roleConnectionSecret | quote }}, key: {{ $atlas.connectionKey | quote }}}
+  {{- end }}
   cloud:
     repo: {{ required "platform.atlas.rolePlanRepository is required for role plan reviews" $atlas.rolePlanRepository | quote }}
     tokenFrom:
@@ -30,7 +35,13 @@ spec:
       review: {{ $atlas.roleReview }}
       destructive: {error: {{ $atlas.blockDestructiveRoles }}}
   config: |
+    {{- if $managed }}
+    data "azure_db_token" "db" {}
+    {{- end }}
     env {{ $atlas.roleEnvironment | toJson }} {
+      {{- if $managed }}
+      url = urluserinfo({{ printf "postgres://%s.postgres.database.azure.com:5432/postgres?sslmode=verify-full" .Values.platform.postgres.azure.serverName | toJson }}, {{ required "platform.atlas.azureAdminUser is required" $atlas.azureAdminUser | toJson }}, data.azure_db_token.db)
+      {{- end }}
       include = [
         {{- range $role := $scope }}
         {{ printf "%s[type=role|user]" $role | toJson }},
@@ -57,13 +68,13 @@ spec:
       {{- fail (printf "role %s is outside platform.atlas.roleScope" $name) }}
       {{- end }}
       {{- if $role.login }}
-      {{- if ne (default "password" $role.authentication) "certificate" }}
+      {{- if eq (default "password" $role.authentication) "password" }}
       variable {{ printf "password_%s" $name | toJson }} {
         type = string
       }
       {{- end }}
       user {{ $name | toJson }} {
-        {{- if ne (default "password" $role.authentication) "certificate" }}
+        {{- if eq (default "password" $role.authentication) "password" }}
         password = var.password_{{ $name }}
         {{- end }}
       {{- else }}
@@ -87,7 +98,7 @@ spec:
   {{- if $hasPasswords }}
   vars:
     {{- range $name, $role := .Values.postgres.roles }}
-    {{- if and $role.login (ne (default "password" $role.authentication) "certificate") }}
+    {{- if and $role.login (eq (default "password" $role.authentication) "password") }}
     - key: {{ printf "password_%s" $name }}
       valueFrom:
         secretKeyRef:
@@ -101,6 +112,7 @@ spec:
 {{- include "application.defaults" . -}}
 {{- $atlas := .Values.platform.atlas }}
 {{- $scope := $atlas.roleScope }}
+{{- $managed := eq .Values.platform.postgres.backend "azure" }}
 {{- if and .Values.postgres.roles (not $scope) }}
 {{- fail "platform.atlas.roleScope must explicitly list the roles this release owns" }}
 {{- end }}
@@ -157,6 +169,7 @@ spec:
   {{- if $migration.revisionsSchema }}
   revisionsSchema: {{ $migration.revisionsSchema | quote }}
   {{- end }}
+  {{- if not $managed }}
   credentials:
     {{- $connection := deepCopy $atlas.connection }}
     {{- if $migration.schema }}
@@ -176,10 +189,44 @@ spec:
         name: {{ $role.passwordSecret | quote }}
         key: {{ $atlas.passwordKey | quote }}
     {{- end }}
+  {{- end }}
   cloud:
     tokenFrom:
       secretKeyRef: {name: {{ $atlas.cloudTokenSecret | quote }}, key: {{ $atlas.cloudTokenKey | quote }}}
-  {{- if $migration.local }}
+  {{- if $managed }}
+  {{- if $migration.principalIdConfigMap }}
+  vars:
+    - key: principal_id
+      valueFrom:
+        configMapKeyRef: {name: {{ $migration.principalIdConfigMap | quote }}, key: principalId}
+  {{- end }}
+  envName: {{ $.Values.namespace | quote }}
+  config: |
+    data "azure_db_token" "db" {}
+    {{- if $migration.principalIdConfigMap }}
+    variable "principal_id" { type = string }
+    {{- end }}
+    {{- if $migration.local }}
+    data "template_dir" "migrations" {
+      path = "migrations"
+      vars = {
+        {{- range $key, $roleName := $migration.roleVars }}
+        {{ $key | toJson }} = {{ $roleName | toJson }}
+        {{- end }}
+        {{- if $migration.principalIdConfigMap }}
+        principal_id = var.principal_id
+        {{- end }}
+      }
+    }
+    {{- end }}
+    env {
+      name = atlas.env
+      url = urluserinfo({{ printf "postgres://%s.postgres.database.azure.com:5432/%s?sslmode=verify-full" $.Values.platform.postgres.azure.serverName $database.name | toJson }}, {{ required "platform.atlas.azureAdminUser is required" $atlas.azureAdminUser | toJson }}, data.azure_db_token.db)
+      {{- if $migration.local }}
+      migration { dir = data.template_dir.migrations.url }
+      {{- end }}
+    }
+  {{- else if $migration.local }}
   envName: migration
   config: |
     data "template_dir" "migrations" {
@@ -195,6 +242,8 @@ spec:
         dir = data.template_dir.migrations.url
       }
     }
+  {{- end }}
+  {{- if $migration.local }}
   dir:
     local:
       {{- toYaml $migration.local | nindent 6 }}
@@ -221,14 +270,18 @@ spec:
 {{- if or $scope .Values.postgres.migrations }}
 {{- $secrets := list $atlas.cloudTokenSecret }}
 {{- $states := list }}
+{{- $configMaps := list }}
 {{- if $scope }}
+{{- if not $managed }}
 {{- $secrets = append $secrets $atlas.roleConnectionSecret }}
 {{- range $role := .Values.postgres.roles }}
-{{- if and $role.login (ne (default "password" $role.authentication) "certificate") }}{{- $secrets = append $secrets $role.passwordSecret }}{{- end }}
+{{- if and $role.login (eq (default "password" $role.authentication) "password") }}{{- $secrets = append $secrets $role.passwordSecret }}{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- range $name, $migration := .Values.postgres.migrations }}
 {{- if $migration.devURLSecret }}{{- $secrets = append $secrets $migration.devURLSecret }}{{- end }}
+{{- if $migration.principalIdConfigMap }}{{- $configMaps = append $configMaps $migration.principalIdConfigMap }}{{- end }}
 {{- if $migration.local }}
 {{- $states = append $states (printf "io.atlasgo.db.v1.%s.latest" (include "application.resourceName" (dict "root" $ "name" $name))) }}
 {{- end }}
@@ -247,6 +300,13 @@ rules:
     resources: [secrets]
     resourceNames: {{ uniq $secrets | sortAlpha | toJson }}
     verbs: [get]
+  {{- if $configMaps }}
+
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: {{ uniq $configMaps | sortAlpha | toJson }}
+    verbs: [get]
+  {{- end }}
   {{- if $states }}
 
   - apiGroups: [""]

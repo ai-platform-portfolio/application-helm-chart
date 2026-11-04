@@ -179,7 +179,7 @@ tests:
 
     asserts:
       - failedTemplate:
-          errorPattern: needs clientId before deploying workloads
+          errorPattern: needs clientId or generated ConfigMap
 
   - it: references a shared identity without owning its identity or roles
     values:

@@ -483,8 +483,47 @@ helm template poc . -f examples/application.yaml -f examples/production.yaml
 ```
 
 The example image digests and domains are placeholders. Platform operators and
-the shared Gateway are installed through GitOps. ASO database and Atlas
-migration templates are separate follow-up work.
+the shared Gateway are installed through GitOps.
+
+## Azure PostgreSQL and persistent environments
+
+The same minimal `databases` intent can target Azure PostgreSQL Flexible Server.
+The platform supplies `platform.postgres.backend: azure`, the server name and
+resource group, Azure identity metadata, and the Atlas administrator login.
+For each requested database, the chart creates an ASO `FlexibleServersDatabase`,
+a dedicated user-assigned runtime identity and federated credential, and
+Atlas-owned Entra role, identity mapping, grants and application migrations.
+The API receives a password-free connection URL and its workload identity client
+ID. The application obtains short-lived Entra database tokens. CNPG previews
+continue using their client certificates.
+
+Render this profile with `examples/managed.yaml` and
+`examples/azure-managed.yaml`. The Azure identity and database owner CRs are
+deleted with an environment; the shared server is owned separately. Database
+contents survive a revision update or rollback within the same environment.
+
+For persistent registration, an application declares its repository and target
+hostnames, as in `examples/persistent-registration.yaml`. The platform renders
+only `templates/argocd/environments.yaml` with its Azure and GitHub App metadata.
+That template creates one ApplicationSet per target and a chart-owned Argo
+Application that reconciles `templates/kargo/`. Kargo derives an isolated Project
+from the repository, discovers published main OCI charts as Freight, and writes
+`deploy/environments/<environment>/release.yaml` on the application's `delivery`
+branch. Each file pins one immutable version; the OCI chart already contains the
+source SHA, image digests and migration version. Production can name staging as
+`from` and accepts only Freight verified there. The verification AnalysisRun
+requires Argo to finish the selected version's PostSync browser hook before
+making that Freight available downstream. Kargo promotion remains manual by
+default. An earlier Freight is a rollback without replacing the database.
+
+The operator supplies `platform.kargo.github` App ID, installation ID and Key
+Vault key reference only when rendering the registration. The generated Kargo
+ExternalSecret matches this repository URL exactly; no key is checked into the
+application repository. The existing GitHub App must have Contents write access
+to the delivery branch, and the Kargo controller needs ACR read access. Those
+permissions and the complete promotion path require live proof after merge.
+Actual Azure token, SQL and cleanup behavior require live reconciliation after
+the shared identity package and chart are merged.
 
 ## Test the chart
 

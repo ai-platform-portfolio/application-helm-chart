@@ -80,6 +80,7 @@
                 "repository": {"type": "string", "pattern": "^$|^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
                 "workflow": {"type": "string", "pattern": "^\\.github/workflows/[^/@]+\\.ya?ml$"},
                 "pullRequest": {"type": "string", "pattern": "^$|^[1-9][0-9]{0,9}$"},
+                "environment": {"type": "string", "pattern": "^$|^[a-z][a-z0-9-]{0,20}$"},
                 "tokenSecret": {"type": "string", "minLength": 1},
                 "image": {"type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$"},
                 "timeoutSeconds": {"type": "integer", "minimum": 30, "maximum": 300}
@@ -125,6 +126,42 @@
                 "workflow": {"type": "string", "pattern": "^\\.github/workflows/[^/@]+\\.ya?ml$"},
                 "tokenSecret": {"type": "string", "minLength": 1}
               }
+            },
+            "environments": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "registry": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"},
+                "targets": {
+                  "type": "object",
+                  "propertyNames": {"pattern": "^[a-z][a-z0-9-]{0,20}$"},
+                  "additionalProperties": {
+                    "type": "object", "required": ["hostname"], "additionalProperties": false,
+                    "properties": {
+                      "hostname": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"},
+                      "from": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,20}$"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "kargo": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "github": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "appId": {"type": "string"},
+                "installationId": {"type": "string"},
+                "privateKeyRemoteKey": {"type": "string"}
+              }
+            },
+            "verification": {
+              "type": "object", "additionalProperties": false,
+              "properties": {"image": {"type": "string", "pattern": "^.+@sha256:[a-f0-9]{64}$"}}
             }
           }
         },
@@ -198,12 +235,21 @@
           "properties": {
             "roleScope": { "type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 63} },
             "roleReview": { "enum": ["ERROR", "WARNING", "ALWAYS"] },
-            "blockDestructiveRoles": { "type": "boolean" }
+            "blockDestructiveRoles": { "type": "boolean" },
+            "azureAdminUser": {"type": "string"}
           }
         },
         "postgres": {
           "type": "object",
           "properties": {
+            "backend": {"enum": ["cnpg", "azure"]},
+            "azure": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "serverName": {"type": "string"},
+                "serverResourceGroup": {"type": "string"}
+              }
+            },
             "databaseReclaimPolicy": { "enum": ["retain", "delete"] }
           }
         },
@@ -220,7 +266,8 @@
                   "azureName": { "type": "string", "minLength": 1 },
                   "create": { "type": "boolean" },
                   "resourceGroup": { "type": "string", "minLength": 1 },
-                  "clientId": { "type": "string", "minLength": 1 }
+                  "clientId": { "type": "string", "minLength": 1 },
+                  "reflectToApplication": {"type": "boolean"}
 
                 }
               }
@@ -295,10 +342,7 @@
                 ]
               }
             },
-            "required": [
-              "name",
-              "owner"
-            ]
+            "required": ["name"]
           }
         },
         "roles": {
@@ -310,7 +354,7 @@
               "login": {
                 "type": "boolean"
               },
-              "authentication": {"enum": ["password", "certificate"]},
+              "authentication": {"enum": ["password", "certificate", "entra"]},
               "passwordSecret": {
                 "type": "string",
                 "minLength": 1
@@ -343,6 +387,7 @@
                 "minLength": 1
               },
               "role": { "type": "string", "minLength": 1 },
+              "principalIdConfigMap": {"type": "string", "minLength": 1},
               "devURLSecret": { "type": "string", "minLength": 1 },
               "schema": {
                 "type": "string",
@@ -400,7 +445,7 @@
                 "not": { "anyOf": [{ "required": ["local"] }, { "required": ["roleVars"] }] }
               },
               {
-                "required": ["local", "schema", "revisionsSchema"],
+                "required": ["local", "revisionsSchema"],
                 "not": { "anyOf": [{ "required": ["repository"] }, { "required": ["tag"] }] }
               }
             ]

@@ -1,0 +1,9 @@
+# Render only templates/argocd/environments.yaml for initial registration.
+platform:
+  argocd:
+    repository: https://github.com/example/second-application.git
+    environments:
+      enabled: true
+      targets:
+        staging: {hostname: second.staging.example.test}
+        production: {hostname: second.example.test}

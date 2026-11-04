@@ -1,0 +1,76 @@
+{{- if .Values.platform.kargo.enabled -}}
+{{- $id := include "application.kargoIdentity" . | fromJson -}}
+{{- $targets := .Values.platform.argocd.environments.targets -}}
+{{- $oci := printf "oci://%s/releases/%s/main/application" .Values.platform.argocd.environments.registry $id.repository -}}
+{{- range $environment, $target := $targets }}
+{{- if not (regexMatch "^[a-z][a-z0-9-]{0,20}$" $environment) -}}{{- fail (printf "invalid persistent environment %s" $environment) -}}{{- end -}}
+{{- $upstream := default "" $target.from -}}
+{{- if and $upstream (not (hasKey $targets $upstream)) -}}{{- fail (printf "unknown Kargo upstream %s for %s" $upstream $environment) -}}{{- end -}}
+{{- if eq $upstream $environment -}}{{- fail "Kargo stage cannot promote from itself" -}}{{- end -}}
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: {{ $environment | quote }}
+  namespace: {{ $id.base | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  vars:
+    - name: gitRepo
+      value: {{ $id.url | quote }}
+    - name: appName
+      value: {{ printf "%s-%s" $id.base $environment | quote }}
+  requestedFreight:
+    - origin: {kind: Warehouse, name: application}
+      sources:
+        {{- if $upstream }}
+        stages: [{{ $upstream | quote }}]
+        {{- else }}
+        direct: true
+        {{- end }}
+  promotionTemplate:
+    spec:
+      steps:
+        - uses: git-clone
+          config:
+            repoURL: {{ "${{ vars.gitRepo }}" | quote }}
+            checkout:
+              - branch: delivery
+                create: true
+                path: ./out
+
+        - uses: file-write
+          config:
+            path: {{ printf "./out/deploy/environments/%s/release.yaml" $environment | quote }}
+            overwrite: true
+            contents: |
+              environment: {{ $environment }}
+              release:
+                version: {{ printf "\"${{ chartFrom('%s').Version }}\"" $oci }}
+
+        - uses: git-commit
+          config:
+            path: ./out
+            message: {{ printf "Promote %s to %s" $id.repository $environment | quote }}
+
+        - uses: git-push
+          config:
+            path: ./out
+            targetBranch: delivery
+
+        - uses: argocd-wait
+          config:
+            apps:
+              - name: {{ "${{ vars.appName }}" | quote }}
+                namespace: {{ $.Values.platform.argocd.namespace | quote }}
+
+  verification:
+    analysisTemplates: [{name: deployed-release}]
+    args:
+      - name: application
+        value: {{ printf "%s-%s" $id.base $environment | quote }}
+      - name: version
+        value: {{ printf "${{ chartFrom('%s').Version }}" $oci | quote }}
+---
+{{- end }}
+{{- end -}}

@@ -1,0 +1,124 @@
+{{- $argo := .Values.platform.argocd -}}
+{{- $persistent := $argo.environments -}}
+{{- if $persistent.enabled -}}
+{{- if or $argo.enabled $argo.previews.enabled -}}{{- fail "Render persistent registration separately from previews or a single Application" -}}{{- end -}}
+{{- $url := required "platform.argocd.repository is required for persistent environments" $argo.repository -}}
+{{- if not (regexMatch "^https://github.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\\.git)?$" $url) -}}
+{{- fail "persistent environments require an HTTPS github.com owner/repository URL" -}}
+{{- end -}}
+{{- $repository := lower (trimSuffix ".git" (trimPrefix "https://github.com/" $url)) -}}
+{{- $parts := splitList "/" $repository -}}
+{{- $slug := trimAll "-" (regexReplaceAll "[^a-z0-9]+" (index $parts 1) "-") | trunc 28 | trimSuffix "-" | default "app" -}}
+{{- $base := printf "%s-%s" $slug (trunc 12 (sha256sum $repository)) -}}
+{{- range $environment, $target := $persistent.targets }}
+{{- if not (regexMatch "^[a-z][a-z0-9-]{0,20}$" $environment) -}}{{- fail (printf "invalid persistent environment %s" $environment) -}}{{- end -}}
+{{- $name := printf "%s-%s" $base $environment -}}
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $argo.namespace | quote }}
+  labels:
+    platform.ai-platform-portfolio/environment: {{ $environment | quote }}
+spec:
+  goTemplate: true
+  goTemplateOptions: [missingkey=error]
+  generators:
+    - git:
+        repoURL: {{ $url | quote }}
+        revision: delivery
+        files:
+          - path: {{ printf "deploy/environments/%s/release.yaml" $environment | quote }}
+  syncPolicy:
+    preserveResourcesOnDeletion: false
+  template:
+    metadata:
+      name: {{ $name | quote }}
+      finalizers: [resources-finalizer.argocd.argoproj.io]
+      labels:
+        platform.ai-platform-portfolio/environment: {{ $environment | quote }}
+    spec:
+      project: {{ $argo.project | quote }}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {{ $name | quote }}
+      source:
+        repoURL: {{ printf "%s/releases/%s/main" $persistent.registry $repository | quote }}
+        chart: application
+        targetRevision: {{ "{{.release.version}}" | quote }}
+        helm:
+          releaseName: {{ $name | quote }}
+          valueFiles: [release-values.yaml]
+          valuesObject:
+            name: {{ $name | quote }}
+            namespace: {{ $name | quote }}
+            hostname: {{ required (printf "hostname is required for %s" $environment) $target.hostname | quote }}
+            platform:
+              argocd: {enabled: false, environments: {enabled: false}}
+              release:
+                check:
+                  enabled: true
+                  repository: {{ $repository | quote }}
+                  environment: {{ $environment | quote }}
+              lifecycle:
+                cleanup: {enabled: true}
+              postgres:
+                backend: azure
+                azure:
+                  serverName: {{ required "platform.postgres.azure.serverName is required" $.Values.platform.postgres.azure.serverName | quote }}
+                  serverResourceGroup: {{ required "platform.postgres.azure.serverResourceGroup is required" $.Values.platform.postgres.azure.serverResourceGroup | quote }}
+              atlas:
+                azureAdminUser: {{ required "platform.atlas.azureAdminUser is required" $.Values.platform.atlas.azureAdminUser | quote }}
+              azure:
+                subscriptionId: {{ required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId | quote }}
+                tenantId: {{ required "platform.azure.tenantId is required" $.Values.platform.azure.tenantId | quote }}
+                oidcIssuerUrl: {{ required "platform.azure.oidcIssuerUrl is required" $.Values.platform.azure.oidcIssuerUrl | quote }}
+                location: {{ required "platform.azure.location is required" $.Values.platform.azure.location | quote }}
+                identityResourceGroup: {{ required "platform.azure.identityResourceGroup is required" $.Values.platform.azure.identityResourceGroup | quote }}
+      syncPolicy:
+        automated: {prune: true, selfHeal: true}
+        retry:
+          limit: 10
+          backoff: {duration: 10s, factor: 2, maxDuration: 3m}
+        syncOptions: [ServerSideApply=true, PruneLast=true]
+---
+{{- end }}
+{{- if $.Values.platform.kargo.enabled }}
+{{- $kargoName := printf "%s-delivery" $base -}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $kargoName | quote }}
+  namespace: {{ $argo.namespace | quote }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ $argo.project | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $argo.namespace | quote }}
+  source:
+    repoURL: {{ $argo.chartRepository | quote }}
+    targetRevision: {{ required "platform.argocd.chartRevision must pin Kargo registration" $argo.chartRevision | quote }}
+    path: .
+    helm:
+      releaseName: {{ $kargoName | quote }}
+      valuesObject:
+        platform:
+          argocd:
+            repository: {{ $url | quote }}
+            namespace: {{ $argo.namespace | quote }}
+            environments:
+              registry: {{ $persistent.registry | quote }}
+              targets:
+                {{- toYaml $persistent.targets | nindent 16 }}
+          kargo:
+            {{- toYaml (mergeOverwrite (deepCopy $.Values.platform.kargo) (dict "enabled" true)) | nindent 12 }}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    retry:
+      limit: 10
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
+    syncOptions: [ServerSideApply=true, PruneLast=true, SkipDryRunOnMissingResource=true]
+---
+{{- end }}
+{{- end }}

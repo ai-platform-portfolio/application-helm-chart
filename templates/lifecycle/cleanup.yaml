@@ -6,10 +6,12 @@
 {{- end }}
 {{- $atlas := .Values.platform.atlas }}
 {{- $pg := .Values.platform.postgres }}
+{{- $managed := eq $pg.backend "azure" }}
 {{- if has .Values.namespace (list $atlas.namespace $pg.namespace .Values.platform.argocd.namespace "default" "kube-system" "kube-public" "kube-node-lease") }}
 {{- fail "cleanup requires an exclusive application namespace, separate from shared services" }}
 {{- end }}
 {{- $clients := list }}
+{{- if not $managed }}
 {{- range $key, $database := .Values.postgres.databases }}
 {{- if ne (default $pg.databaseReclaimPolicy $database.reclaimPolicy) "delete" }}
 {{- fail (printf "cleanup requires reclaimPolicy: delete for database %s" $key) }}
@@ -20,6 +22,7 @@
 {{- fail "cleanup requires the generated certificate resource and Secret names/namespaces" }}
 {{- end }}
 {{- $clients = append $clients $client }}
+{{- end }}
 {{- end }}
 {{- $name := include "application.resourceName" (dict "root" . "name" "cleanup") }}
 {{- $empty := deepCopy . }}
@@ -50,7 +53,7 @@ metadata:
 rules:
   - apiGroups: ['']
     resources: [secrets]
-    resourceNames: {{ list $atlas.cloudTokenSecret $atlas.roleConnectionSecret | uniq | sortAlpha | toJson }}
+    resourceNames: {{ ternary (list $atlas.cloudTokenSecret) (list $atlas.cloudTokenSecret $atlas.roleConnectionSecret) $managed | uniq | sortAlpha | toJson }}
     verbs: [get]
 
 ---
@@ -68,6 +71,7 @@ subjects:
   - {kind: ServiceAccount, name: {{ $atlas.serviceAccount | quote }}, namespace: {{ $atlas.namespace | quote }}}
 
 ---
+{{- if not $managed }}
 # Source leaf Secrets currently lack owner references. ESO copies and Atlas
 # migration state use native garbage collection; only source leaves need a Job.
 apiVersion: v1
@@ -149,4 +153,5 @@ spec:
             - {name: tmp, mountPath: /tmp}
       volumes:
         - {name: tmp, emptyDir: {}}
+{{- end }}
 {{- end }}

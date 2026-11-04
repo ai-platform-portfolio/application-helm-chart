@@ -2,7 +2,8 @@
 {{- $check := .Values.platform.release.check -}}
 {{- if and $test.enabled $check.enabled -}}
 {{- $repository := required "deployed test status requires repository" $check.repository -}}
-{{- $number := required "deployed test status requires pullRequest" $check.pullRequest -}}
+{{- if not (or $check.pullRequest $check.environment) -}}{{- fail "deployed test status requires pullRequest or environment" -}}{{- end -}}
+{{- if and $check.pullRequest $check.environment -}}{{- fail "deployed test status cannot target both PR and environment" -}}{{- end -}}
 {{- $revision := required "deployed test status requires expectedRevision" .Values.platform.release.expectedRevision -}}
 {{- $token := required "deployed test status requires release check tokenSecret" $check.tokenSecret -}}
 {{- range $hook := list (dict "state" "pending" "phase" "PreSync" "wave" "-1") (dict "state" "success" "phase" "PostSync" "wave" "1") (dict "state" "failure" "phase" "SyncFail" "wave" "0") -}}
@@ -38,7 +39,9 @@ spec:
 {{ $.Files.Get "files/argocd/report-test-status.py" | indent 14 }}
           env:
             - {name: REPOSITORY, value: {{ $repository | quote }}}
-            - {name: PR_NUMBER, value: {{ $number | quote }}}
+            - {name: PR_NUMBER, value: {{ $check.pullRequest | quote }}}
+            - {name: ENVIRONMENT, value: {{ $check.environment | quote }}}
+            - {name: RELEASE_VERSION, value: {{ $.Chart.Version | quote }}}
             - {name: REVISION, value: {{ $revision | quote }}}
             - {name: STATUS, value: {{ $hook.state | quote }}}
           securityContext:

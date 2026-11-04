@@ -1,0 +1,55 @@
+{{- if .Values.platform.kargo.enabled -}}
+{{- $id := include "application.kargoIdentity" . | fromJson -}}
+{{- $targets := .Values.platform.argocd.environments.targets -}}
+{{- if empty $targets -}}{{- fail "Kargo requires at least one persistent environment target" -}}{{- end -}}
+{{- $registry := required "platform.argocd.environments.registry is required for Kargo" .Values.platform.argocd.environments.registry -}}
+{{- $oci := printf "oci://%s/releases/%s/main/application" $registry $id.repository -}}
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: {{ $id.base | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-30"
+
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: application
+  namespace: {{ $id.base | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  interval: 5m
+  subscriptions:
+    - chart:
+        repoURL: {{ $oci | quote }}
+        semverConstraint: ">=0.0.0-0"
+
+---
+# Kargo's repo credential is exact to this app; the PEM remains in Key Vault.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: delivery-git
+  namespace: {{ $id.base | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {name: azure-kv, kind: ClusterSecretStore}
+  target:
+    name: delivery-git
+    template:
+      engineVersion: v2
+      metadata:
+        labels: {kargo.akuity.io/cred-type: git}
+      data:
+        repoURL: {{ $id.url | quote }}
+        githubAppID: {{ required "platform.kargo.github.appId is required" .Values.platform.kargo.github.appId | quote }}
+        githubAppInstallationID: {{ required "platform.kargo.github.installationId is required" .Values.platform.kargo.github.installationId | quote }}
+        githubAppPrivateKey: {{ "{{ .privateKey }}" | quote }}
+  data:
+    - secretKey: privateKey
+      remoteRef: {key: {{ required "platform.kargo.github.privateKeyRemoteKey is required" .Values.platform.kargo.github.privateKeyRemoteKey | quote }}}
+{{- end -}}

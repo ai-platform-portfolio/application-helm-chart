@@ -41,6 +41,18 @@ class StatusTest(unittest.TestCase):
         status.report(REPO, "42", SHA, "failure", lambda _: pr(), lambda path, body: posted.append(body))
         self.assertEqual(posted[0]["state"], "failure")
 
+    def test_persistent_environment_uses_its_own_context(self):
+        posted = []
+        status.report(REPO, "", SHA, "success", lambda _: {"sha": SHA},
+                      lambda path, body: posted.append(body), "staging", "0.12.1-g" + SHA)
+        self.assertEqual(posted[0]["context"], "deployed-playwright-staging")
+        self.assertIn("0.12.1-g" + SHA, posted[0]["description"])
+
+    def test_persistent_environment_rejects_missing_source_commit(self):
+        with self.assertRaisesRegex(ValueError, "source commit is absent"):
+            status.report(REPO, "", SHA, "success", lambda _: {"sha": "b" * 40},
+                          lambda *_: self.fail("Status should not post"), "production", "0.12.1-g" + SHA)
+
 
 if __name__ == "__main__":
     unittest.main()
