@@ -97,6 +97,17 @@ tests:
       - notExists: {path: spec.vars}
       - matchRegex: {path: spec.config, pattern: '"app_sample_app_poc_messages_65df31a804f0_owner\[type=role\|user\]"'}
 
+  - it: keeps the same Azure driver hint during scoped role cleanup
+    values: [../examples/azure-managed.yaml]
+    set: {platform.lifecycle.cleanup.enabled: true, databases.messages.reclaimPolicy: delete}
+    template: templates/lifecycle/cleanup.yaml
+    documentSelector: {path: kind, value: AtlasSchema}
+    asserts:
+      - equal:
+          path: spec.credentials
+          value: {scheme: postgres, host: example-pg.postgres.database.azure.com, port: 5432, database: postgres}
+      - matchRegex: {path: spec.config, pattern: 'data "azure_db_token" "db"'}
+
   - it: forwards cleanup settings into the child and enables cascade only with cleanup
     set:
       platform.lifecycle.cleanup.enabled: true
