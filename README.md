@@ -332,6 +332,13 @@ when supplying a complete native Rollouts strategy with an equivalent blocking
 candidate gate. The post-deploy Playwright check still validates the public
 application after the Rollout completes; it does not replace candidate analysis.
 
+Candidates that never become Ready cannot reach analysis. The chart therefore
+enables native `progressDeadlineAbort` with a 180-second progress deadline.
+Operators can override these under `platform.rollout` for applications with
+longer startup requirements. The deadline measures lack of progress, rather
+than total rollout duration; an exceeded deadline aborts the candidate and
+preserves the stable version.
+
 An aborted Rollout preserves stable traffic but does not change the selected
 OCI release. Restore the previous immutable release in the delivery branch to
 make rollback durable. Keep database migrations compatible with both versions

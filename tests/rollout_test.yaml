@@ -26,6 +26,14 @@ tests:
           value: backend
 
       - equal:
+          path: spec.progressDeadlineSeconds
+          value: 180
+
+      - equal:
+          path: spec.progressDeadlineAbort
+          value: true
+
+      - equal:
           path: spec.strategy.canary.steps
           value:
             - setWeight: 20
