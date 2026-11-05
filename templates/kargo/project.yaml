@@ -1,4 +1,4 @@
-{{- if .Values.platform.kargo.enabled -}}
+{{- if and .Values.platform.kargo.enabled (not .Values.platform.argocd.environments.enabled) -}}
 {{- $id := include "application.kargoIdentity" . | fromJson -}}
 {{- $targets := .Values.platform.argocd.environments.targets -}}
 {{- if empty $targets -}}{{- fail "Kargo requires at least one persistent environment target" -}}{{- end -}}

@@ -1,4 +1,4 @@
-{{- if .Values.platform.kargo.enabled -}}
+{{- if and .Values.platform.kargo.enabled (not .Values.platform.argocd.environments.enabled) -}}
 {{- $id := include "application.kargoIdentity" . | fromJson -}}
 {{- $namespace := .Values.platform.argocd.namespace -}}
 {{- $names := list -}}

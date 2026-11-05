@@ -73,3 +73,16 @@ tests:
       - equal: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[0].args[0]', value: wait}
       - equal: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[0].args[3]', value: '--for=create'}
       - matchRegex: {path: 'spec.metrics[0].provider.job.spec.template.spec.initContainers[1].args[4]', pattern: 'operationState.syncResult.revision'}
+
+  - it: leaves Kargo resources exclusively to the generated delivery Application
+    templates:
+      - templates/kargo/project.yaml
+      - templates/kargo/stages.yaml
+      - templates/kargo/verification.yaml
+    set:
+      platform.kargo.enabled: true
+      platform.argocd.environments.enabled: true
+      platform.argocd.repository: https://github.com/example/orders.git
+      platform.argocd.chartRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - hasDocuments: {count: 0}
