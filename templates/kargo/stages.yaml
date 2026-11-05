@@ -1,4 +1,4 @@
-{{- if .Values.platform.kargo.enabled -}}
+{{- if and .Values.platform.kargo.enabled (not .Values.platform.argocd.environments.enabled) -}}
 {{- $id := include "application.kargoIdentity" . | fromJson -}}
 {{- $targets := .Values.platform.argocd.environments.targets -}}
 {{- $oci := printf "oci://%s/releases/%s/main/application" .Values.platform.argocd.environments.registry $id.repository -}}

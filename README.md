@@ -571,6 +571,11 @@ contents survive a revision update or rollback within the same environment.
 For persistent registration, an application declares its repository and target
 hostnames, as in `examples/persistent-registration.yaml`. The platform renders
 only `templates/argocd/environments.yaml` with its Azure and GitHub App metadata.
+Registration intent can also be consumed by a platform-owned Argo Application
+using this chart and the intent values file. While registration is enabled,
+Kargo templates emit no resources: the generated delivery Application owns them.
+This avoids duplicate ownership during normal whole-chart reconciliation.
+
 That template creates one ApplicationSet per target and a chart-owned Argo
 Application that reconciles `templates/kargo/`. Kargo derives an isolated Project
 from the repository, discovers published main OCI charts as Freight, and writes
