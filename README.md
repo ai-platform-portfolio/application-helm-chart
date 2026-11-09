@@ -736,6 +736,24 @@ database URL; never point it at the target database. Before deployment, verify
 that any operator-created dev database uses the target PostgreSQL major version,
 satisfies Pod Security and fits the cluster, or provide a compatible dev URL.
 
+Managed remote migrations with `platform.atlas.migrateDown.allow: true` also
+provide non-secret driver/scope metadata through `spec.credentials`, following
+the existing managed AtlasSchema pattern. Operator 0.8.4 cannot infer its dev
+database from the custom Entra HCL alone. It uses the metadata to create its
+normal isolated per-resource dev Deployment; the HCL URL overrides that hint
+and retains short-lived Entra authentication and hostname-verified TLS. An
+explicit `devURLSecret` remains authoritative. Ordinary forward migrations and
+blocked inline identity/access downgrades do not receive this hint.
+
+Remote downgrades also require the registry's untagged `latest` directory to
+contain every migration being reverted: operator 0.8.4 fetches that directory
+when calculating the inverse, even when the resource selects an older tag.
+Publish through the normal main workflow before testing rollback of a PR-only
+migration. Keep protected approval enabled; never move `latest` from a preview
+or edit revision history to bypass a missing-file error.
+See [operator dev selection and config merging](https://github.com/ariga/atlas-operator/blob/v0.8.4/internal/controller/atlasmigration_controller.go)
+and [protected down migrations](https://atlasgo.io/integrations/kubernetes/versioned#protectedflowsmigratedown).
+
 Sync waves remain absent by default. A platform environment can use:
 
 ```yaml

@@ -181,6 +181,20 @@ spec:
   {{- if $migration.revisionsSchema }}
   revisionsSchema: {{ $migration.revisionsSchema | quote }}
   {{- end }}
+  {{- if and $managed (not $migration.local) $atlas.migrateDown.allow (not $migration.devURLSecret) }}
+  # Operator 0.8.4 discovers the driver/scope before merging custom config.
+  # Entra HCL below overrides this non-secret hint; the operator owns the dev pod.
+  credentials:
+    scheme: postgres
+    host: {{ printf "%s.postgres.database.azure.com" $.Values.platform.postgres.azure.serverName | quote }}
+    port: 5432
+    database: {{ $database.name | quote }}
+    parameters:
+      sslmode: verify-full
+      {{- if $migration.schema }}
+      search_path: {{ $migration.schema | quote }}
+      {{- end }}
+  {{- end }}
   {{- if not $managed }}
   credentials:
     {{- $connection := deepCopy $atlas.connection }}

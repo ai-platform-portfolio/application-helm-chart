@@ -25,6 +25,61 @@ tests:
       - matchRegex: {path: spec.config, pattern: 'data "azure_db_token" "db"'}
       - matchRegex: {path: spec.config, pattern: 'url = urluserinfo\('}
 
+  - it: discovers a native dev database for protected Azure remote downgrades
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    set:
+      platform.atlas.migrateDown.allow: true
+    documentSelector: {path: spec.dir.remote.name, value: sample-migrations}
+    asserts:
+      - equal: {path: spec.credentials.scheme, value: postgres}
+      - equal: {path: spec.credentials.host, value: example-pg.postgres.database.azure.com}
+      - equal: {path: spec.credentials.port, value: 5432}
+      - equal:
+          path: spec.credentials.parameters
+          value: {sslmode: verify-full, search_path: public}
+      - matchRegex: {path: spec.credentials.database, pattern: '^app_sample_app_poc_messages_[a-f0-9]{12}$'}
+      - notExists: {path: spec.credentials.user}
+      - notExists: {path: spec.credentials.passwordFrom}
+      - notExists: {path: spec.credentials.password}
+      - matchRegex: {path: spec.config, pattern: 'url = urluserinfo\('}
+      - matchRegex: {path: spec.config, pattern: 'data.azure_db_token.db'}
+      - equal: {path: spec.protectedFlows.migrateDown.allow, value: true}
+      - notExists: {path: spec.protectedFlows.migrateDown.autoApprove}
+
+  - it: leaves Azure forward migrations without a dev driver hint
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    documentSelector: {path: spec.dir.remote.name, value: sample-migrations}
+    asserts:
+      - notExists: {path: spec.credentials}
+      - equal: {path: spec.protectedFlows.migrateDown.allow, value: false}
+
+  - it: preserves explicit Azure dev URLs and their named Secret permission
+    values: [fixtures/postgres.yaml, ../examples/azure-managed.yaml]
+    set:
+      platform.atlas.migrateDown.allow: true
+      postgres.migrations.api.devURLSecret: dedicated-dev
+    asserts:
+      - notExists:
+          path: spec.credentials
+        documentSelector: {path: spec.dir.remote.name, value: preview-poc}
+      - equal:
+          path: spec.devURLFrom.secretKeyRef
+          value: {name: dedicated-dev, key: url}
+        documentSelector: {path: spec.dir.remote.name, value: preview-poc}
+      - contains:
+          path: rules[0].resourceNames
+          content: dedicated-dev
+        documentSelector: {path: kind, value: Role}
+
+  - it: keeps Azure inline access down blocked without a dev driver hint
+    values: [../examples/managed.yaml, ../examples/azure-managed.yaml]
+    set:
+      platform.atlas.migrateDown.allow: true
+    documentSelector: {path: spec.revisionsSchema, value: atlas_access_revisions}
+    asserts:
+      - notExists: {path: spec.credentials}
+      - equal: {path: spec.protectedFlows.migrateDown.allow, value: false}
+
   - it: scopes role reconciliation to the explicit platform ownership list
     values:
       - fixtures/postgres.yaml
