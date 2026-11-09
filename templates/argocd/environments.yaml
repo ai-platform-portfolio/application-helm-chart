@@ -52,7 +52,7 @@ spec:
           valuesObject:
             name: {{ $name | quote }}
             namespace: {{ $name | quote }}
-            hostname: {{ required (printf "hostname is required for %s" $environment) $target.hostname | quote }}
+            hostname: {{ default "" $target.hostname | quote }}
             platform:
               argocd: {enabled: false, environments: {enabled: false}}
               release:

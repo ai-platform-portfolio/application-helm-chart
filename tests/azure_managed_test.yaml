@@ -56,3 +56,72 @@ tests:
     asserts:
       - hasDocuments: {count: 2, filterAware: true}
       - matchRegex: {path: spec.template.spec.source.targetRevision, pattern: '\{\{\.release.version\}\}'}
+      - matchRegex: {path: spec.template.spec.source.helm.valuesObject.hostname, pattern: '^second(\.staging)?\.example\.test$'}
+
+  - it: registers an internal target without inventing a hostname
+    values: [../examples/azure-managed.yaml]
+    template: templates/argocd/environments.yaml
+    set:
+      platform.argocd.repository: https://github.com/example/internal-service.git
+      platform.argocd.environments.enabled: true
+      platform.argocd.environments.targets:
+        staging: {}
+    asserts:
+      - hasDocuments: {count: 1}
+      - matchRegex: {path: metadata.name, pattern: '^internal-service-[a-f0-9]{12}-staging$'}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.hostname, value: ''}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.backend, value: azure}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.lifecycle.cleanup.enabled, value: true}
+
+  - it: allows an internal target alongside a hosted target
+    values: [../examples/azure-managed.yaml]
+    template: templates/argocd/environments.yaml
+    set:
+      platform.argocd.repository: https://github.com/example/second-application.git
+      platform.argocd.environments.enabled: true
+      platform.argocd.environments.targets:
+        staging: {}
+        production: {hostname: second.example.test}
+    documentSelector: {path: 'metadata.labels["platform.ai-platform-portfolio/environment"]', value: staging}
+    asserts:
+      - equal: {path: spec.template.spec.source.helm.valuesObject.hostname, value: ''}
+      - matchRegex: {path: spec.template.spec.destination.namespace, pattern: '^second-application-[a-f0-9]{12}-staging$'}
+
+  - it: preserves the hosted target in a mixed registration
+    values: [../examples/azure-managed.yaml]
+    template: templates/argocd/environments.yaml
+    set:
+      platform.argocd.repository: https://github.com/example/second-application.git
+      platform.argocd.environments.enabled: true
+      platform.argocd.environments.targets:
+        staging: {}
+        production: {hostname: second.example.test}
+    documentSelector: {path: 'metadata.labels["platform.ai-platform-portfolio/environment"]', value: production}
+    asserts:
+      - equal: {path: spec.template.spec.source.helm.valuesObject.hostname, value: second.example.test}
+      - matchRegex: {path: spec.template.spec.destination.namespace, pattern: '^second-application-[a-f0-9]{12}-production$'}
+
+  - it: renders no ingress for an API-only child with no hosts or routes
+    template: templates/gateway-routes.yaml
+    set:
+      name: internal-service
+      hostname: ''
+      components.api:
+        image: example.test/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        port: 8000
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: retains the internal API Service without ingress
+    template: templates/service.yaml
+    set:
+      name: internal-service
+      hostname: ''
+      components.api:
+        image: example.test/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        port: 8000
+    asserts:
+      - hasDocuments: {count: 1}
+      - equal: {path: metadata.name, value: api}
+      - equal: {path: 'spec.ports[0].port', value: 8000}
+      - notExists: {path: spec.type}
