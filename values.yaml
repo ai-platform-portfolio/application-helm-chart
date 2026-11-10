@@ -2,6 +2,7 @@
 name: ""
 hostname: ""
 databases: {}
+storage: {}
 
 # Application values normally set only namespace, hosts and components.
 namespace: ""
@@ -17,6 +18,8 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  models: {}
+  telemetryEndpoint: ""
   tests:
     playwright:
       enabled: false
@@ -148,6 +151,7 @@ platform:
     identityResourceGroup: ""
     keyVault: {name: "", resourceGroup: ""}
     storageAccount: {name: "", resourceGroup: ""}
+    blobRoleId: ""
     identities: {}
     roleAssignments: {}
     storageContainers: {}

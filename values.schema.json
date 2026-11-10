@@ -41,6 +41,7 @@
         "properties": {
           "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 63},
           "reclaimPolicy": {"enum": ["retain", "delete"]},
+          "runtimeAccess": {"enum": ["append", "readWrite"]},
           "migration": {
             "type": "object", "required": ["repository", "tag"], "additionalProperties": false,
             "properties": {
@@ -50,6 +51,11 @@
           }
         }
       }
+    },
+    "storage": {
+      "type": "object", "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$", "maxLength": 30},
+      "additionalProperties": {"type": "object", "additionalProperties": false,
+        "properties": {"reclaimPolicy": {"enum": ["retain", "delete"]}}}
     },
     "namespace": { "type": "string" },
     "platform": {
@@ -298,9 +304,9 @@
               "type": "object",
               "additionalProperties": {
                 "type": "object",
+                "anyOf": [{"required": ["roleName"]}, {"required": ["roleDefinitionId"]}],
                 "required": [
                   "identity",
-                  "roleName",
                   "scope"
                 ],
                 "properties": {
@@ -312,6 +318,9 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "armScope": {"type": "string", "pattern": "^/subscriptions/"},
+                  "roleDefinitionId": {"type": "string"},
+                  "condition": {"type": "string"},
                   "scope": {
                     "enum": [
                       "keyVault",
@@ -489,7 +498,9 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["image", "port"],
+        "required": ["image"],
+        "anyOf": [{"required": ["port"]}, {"required": ["command"]}],
+        "allOf": [{"if": {"required": ["route"]}, "then": {"required": ["port"]}}, {"if": {"properties": {"delivery": {"const": "rollout"}}, "required": ["delivery"]}, "then": {"required": ["port"]}}],
         "properties": {
           "delivery": { "enum": ["deployment", "rollout"] },
           "image": {
@@ -501,6 +512,11 @@
           "readinessPath": {"type": "string", "pattern": "^/"},
           "database": {"type": "string", "minLength": 1},
           "databaseEnv": {"type": "string", "minLength": 1},
+          "storage": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "model": {"type": "string", "minLength": 1},
+          "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "args": {"type": "array", "items": {"type": "string"}},
+          "livenessProbe": {"type": "object"},
           "env": {
             "type": "array",
             "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "minLength": 1 } } }

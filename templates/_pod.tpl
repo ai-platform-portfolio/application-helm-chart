@@ -65,18 +65,30 @@ spec:
       env:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .component.command }}
+      command: {{ . | toJson }}
+      {{- end }}
+      {{- with .component.args }}
+      args: {{ . | toJson }}
+      {{- end }}
+      {{- if .component.port }}
       ports:
         - name: {{ .root.Values.platform.httpPortName }}
           containerPort: {{ .component.port }}
+      {{- end }}
 
       securityContext:
         {{- toYaml .root.Values.platform.pod.containerSecurityContext | nindent 8 }}
 
+      {{- if or .component.port .component.readinessProbe }}
       readinessProbe:
-        {{- toYaml $readiness | nindent 8 }}
+        {{- toYaml (ternary $readiness .component.readinessProbe (not (empty .component.port))) | nindent 8 }}
+      {{- end }}
 
+      {{- if or .component.port .component.livenessProbe }}
       livenessProbe:
-        {{- toYaml $liveness | nindent 8 }}
+        {{- toYaml (default $liveness .component.livenessProbe) | nindent 8 }}
+      {{- end }}
 
       resources:
         {{- toYaml (mergeOverwrite (deepCopy .root.Values.platform.resources) (default dict .component.resources)) | nindent 8 }}

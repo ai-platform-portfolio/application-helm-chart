@@ -72,12 +72,19 @@ spec:
 {{- if eq $identity.create false }}
 {{- fail (printf "identity %s uses an existing managed identity; assign its roles once in platform GitOps" $assignment.identity) }}
 {{- end }}
-{{- $scope := include "application.azureScope" (dict "root" $ "target" $assignment.scope) }}
-{{- $hash := sha256sum (printf "%s/%s/%s" $scope $identity.azureName $assignment.roleName) | trunc 32 }}
+{{- $scope := $assignment.armScope }}
+{{- if not $scope }}
+{{- $scope = include "application.azureScope" (dict "root" $ "target" $assignment.scope) }}
+{{- end }}
+{{- $hashInput := printf "%s/%s/%s" $scope $identity.azureName (default $assignment.roleName $assignment.roleDefinitionId) }}
+{{- if $assignment.generated }}{{- $hashInput = lower $hashInput }}{{- end }}
+{{- $hash := sha256sum $hashInput | trunc 32 }}
+{{- $key := $name }}
+{{- if $assignment.generated }}{{- $key = printf "%s-%s" $name ($hash | trunc 12) }}{{- end }}
 apiVersion: authorization.azure.com/v1api20220401
 kind: RoleAssignment
 metadata:
-  name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
+  name: {{ include "application.resourceName" (dict "root" $ "name" $key) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
   {{- if hasKey $.Values.platform.syncWaves "roleAssignment" }}
   annotations:
@@ -89,6 +96,14 @@ spec:
   principalIdFromConfig: {name: {{ include "application.resourceName" (dict "root" $ "name" $assignment.identity) }}-principal-id, key: principalId}
   principalType: ServicePrincipal
   roleDefinitionReference:
+    {{- if $assignment.roleDefinitionId }}
+    armId: {{ $assignment.roleDefinitionId | quote }}
+    {{- else }}
     wellKnownName: {{ $assignment.roleName | quote }}
+    {{- end }}
+  {{- with $assignment.condition }}
+  conditionVersion: '2.0'
+  condition: {{ . | quote }}
+  {{- end }}
 ---
 {{- end }}
