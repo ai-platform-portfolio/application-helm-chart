@@ -568,8 +568,27 @@ Render this profile with `examples/managed.yaml` and
 deleted with an environment; the shared server is owned separately. Database
 contents survive a revision update or rollback within the same environment.
 
-For persistent registration, an application declares its repository and target
-hostnames, as in `examples/persistent-registration.yaml`. The platform renders
+For persistent registration, an application declares its repository and targets,
+as in `examples/persistent-registration.yaml`. A target's `hostname` is optional:
+
+```yaml
+platform:
+  argocd:
+    repository: https://github.com/example/internal-service.git
+    environments:
+      enabled: true
+      targets:
+        staging: {}
+```
+
+An omitted hostname renders an empty child `hostname` override rather than
+inheriting the packaged hostname. An API-only package with no explicit `hosts` or
+component `route` creates its Service without ListenerSets or HTTPRoutes. Omitting
+the target hostname does not remove explicit hosts/routes in a package or enforce
+network isolation; declare those only when exposure is intended. Supplied
+hostnames retain their existing behaviour and validation.
+
+The platform renders
 only `templates/argocd/environments.yaml` with its Azure and GitHub App metadata.
 Registration intent can also be consumed by a platform-owned Argo Application
 using this chart and the intent values file. While registration is enabled,
