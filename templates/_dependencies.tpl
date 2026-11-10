@@ -42,7 +42,8 @@
 {{- $_ := set $azure.roleAssignments (printf "%s-blob" $name) (dict "generated" true "identity" $identity "roleName" "application-blob-data" "roleDefinitionId" (required "platform.azure.blobRoleId is required" $azure.blobRoleId) "scope" "storageAccount" "condition" $condition) -}}
 {{- end -}}
 {{- if $component.model -}}
-{{- $model := required (printf "component %s references undefined model %s" $name $component.model) (index $.Values.platform.models $component.model) -}}
+{{- $model := default dict (index $.Values.platform.models $component.model) -}}
+{{- $_ := required (printf "component %s references undefined model %s" $name $component.model) $model -}}
 {{- $_ := set $env "MODEL_BASE_URL" (required "model endpoint is required" $model.endpoint) -}}
 {{- $_ := set $env "MODEL_DEPLOYMENT" (required "model deployment is required" $model.deployment) -}}
 {{- $scope := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.CognitiveServices/accounts/%s" $azure.subscriptionId (required "model resourceGroup is required" $model.resourceGroup) (required "model account is required" $model.account) -}}
