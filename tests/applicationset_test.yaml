@@ -50,6 +50,21 @@ tests:
       - matchRegex: {path: spec.template.spec.source.helm.valuesObject.hostname, pattern: '\.previews\.example\.test$'}
       - equal: {path: spec.template.spec.source.helm.valuesObject.platform.argocd.namespace, value: delivery}
 
+  - it: explicitly clears the child hostname for internal previews
+    set:
+      platform.argocd.repository: https://github.com/example/internal-api.git
+      platform.argocd.previews.enabled: true
+      platform.argocd.previews.generateHostname: false
+    asserts:
+      - equal: {path: spec.template.spec.source.helm.valuesObject.hostname, value: ''}
+      - matchRegex: {path: spec.template.spec.destination.namespace, pattern: '^internal-api-[a-f0-9]{12}-pr-\{\{.number\}\}$'}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.release.expectedRevision, value: '{{.head_sha}}'}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.release.check.enabled, value: true}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.release.check.repository, value: example/internal-api}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.lifecycle.cleanup.enabled, value: true}
+      - equal: {path: spec.template.metadata.finalizers, value: [resources-finalizer.argocd.argoproj.io]}
+      - equal: {path: spec.syncPolicy.preserveResourcesOnDeletion, value: false}
+
   - it: refuses ambiguous registration modes
     set:
       platform.argocd.enabled: true

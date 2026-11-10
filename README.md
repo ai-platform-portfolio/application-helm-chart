@@ -183,6 +183,14 @@ they are configurable service settings, not per-application resource names.
 The template currently supports github.com repositories and same-repository PR
 publications. Forks cannot pass the publication gate.
 
+Set `platform.argocd.previews.generateHostname: false` for an internal preview.
+The default is `true`, preserving the repository/PR-derived hostname. When false,
+registration explicitly sets the child's top-level `hostname` to empty, clearing
+any packaged top-level hostname. An API-only package without explicit hosts/routes
+then renders no public ingress. Explicit packaged hosts/routes remain unchanged;
+this option is not a network isolation policy. Service/database resources, source
+and publication checks, preview identity and ordered cleanup remain enabled.
+
 Each child selects the greatest semantic version (including prereleases) in its own
 `releases/<owner>/<repo>/pr-<number>/application` OCI repository. The publisher must
 use monotonic versions and lock writes. Selection alone is insufficient: the child
