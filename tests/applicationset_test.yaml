@@ -33,6 +33,7 @@ tests:
       - equal: {path: spec.template.spec.source.helm.valuesObject.platform.lifecycle.cleanup.enabled, value: true}
       - equal: {path: spec.template.metadata.finalizers, value: [resources-finalizer.argocd.argoproj.io]}
       - equal: {path: spec.syncPolicy.preserveResourcesOnDeletion, value: false}
+      - equal: {path: spec.template.spec.syncPolicy.retry.refresh, value: true}
       - equal: {path: spec.template.spec.source.helm.valuesObject.platform.gateway.sharedListener, value: preview-https}
       - matchRegex: {path: spec.template.spec.destination.namespace, pattern: '^orders-[a-f0-9]{12}-pr-\{\{.number\}\}$'}
       - equal: {path: 'spec.template.spec.source.helm.valuesObject.platform.namespaceLabels["gitops.platform/preview"]', value: 'true'}
