@@ -6,9 +6,14 @@ kind: StorageAccountsBlobServicesContainer
 metadata:
   name: {{ include "application.resourceName" (dict "root" $ "name" $name) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
-  {{- if hasKey $.Values.platform.syncWaves "storageContainer" }}
+  {{- if or (hasKey $.Values.platform.syncWaves "storageContainer") (eq $container.reclaimPolicy "retain") }}
   annotations:
+    {{- if hasKey $.Values.platform.syncWaves "storageContainer" }}
     argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "storageContainer" | quote }}
+    {{- end }}
+    {{- if eq $container.reclaimPolicy "retain" }}
+    serviceoperator.azure.com/reconcile-policy: detach-on-delete
+    {{- end }}
   {{- end }}
 spec:
   azureName: {{ $container.azureName | quote }}

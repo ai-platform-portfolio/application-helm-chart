@@ -139,6 +139,10 @@ postgres:
       local:
         1_access.sql: |
 {{ .root.Files.Get "files/postgres/1_access.sql" | indent 10 }}
+        {{- if eq (default "append" .database.runtimeAccess) "readWrite" }}
+        2_read_write.sql: |
+{{ .root.Files.Get "files/postgres/2_read_write.sql" | indent 10 }}
+        {{- end }}
     {{- with .database.migration }}
     {{ $.name }}:
       database: {{ $.name }}
@@ -201,6 +205,10 @@ postgres:
       local:
         1_access.sql: |
 {{ .root.Files.Get "files/postgres/1_access.sql" | indent 10 }}
+        {{- if eq (default "append" .database.runtimeAccess) "readWrite" }}
+        2_read_write.sql: |
+{{ .root.Files.Get "files/postgres/2_read_write.sql" | indent 10 }}
+        {{- end }}
     {{- with .database.migration }}
     {{ $.name }}:
       database: {{ $.name }}

@@ -1,0 +1,31 @@
+name: second-app
+namespace: second-pr-42
+components:
+  worker:
+    image: example.test/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    command:
+    - python
+    - worker.py
+    storage: documents
+    model: chat
+storage:
+  documents:
+    reclaimPolicy: delete
+platform:
+  azure:
+    subscriptionId: 00000000-0000-0000-0000-000000000001
+    tenantId: 00000000-0000-0000-0000-000000000002
+    oidcIssuerUrl: https://issuer.example.test/
+    location: uksouth
+    identityResourceGroup: example-rg
+    storageAccount:
+      name: examplestorage
+      resourceGroup: example-rg
+    blobRoleId: /subscriptions/00000000-0000-0000-0000-000000000001/providers/Microsoft.Authorization/roleDefinitions/00000000-0000-0000-0000-000000000003
+  models:
+    chat:
+      endpoint: https://example.services.ai.azure.com/api/projects/default/openai/v1/
+      deployment: chat
+      resourceGroup: example-rg
+      account: example-foundry
+      project: default

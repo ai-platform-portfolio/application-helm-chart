@@ -902,3 +902,63 @@ role. Keep the ownership scope while reconciling an empty desired role set for
 an explicitly approved cleanup, after dropping its databases/dependencies.
 Deleting Atlas CRs alone leaves SQL objects behind. PR-close orchestration and
 backup/recovery drills remain separate implementation steps.
+
+### Worker, Blob and model intent
+
+A component with `command` and no `port` is an ordinary Deployment without a
+Service or default HTTP probes. Native `args`, `readinessProbe` and
+`livenessProbe` are available. Existing port-based components retain their defaults.
+
+```yaml
+storage:
+  documents: {reclaimPolicy: delete}
+
+databases:
+  reviews: {reclaimPolicy: delete, runtimeAccess: readWrite}
+
+components:
+  api:
+    image: example.test/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    port: 8000
+    database: reviews
+    storage: documents
+  worker:
+    image: example.test/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    command: [python, worker.py]
+    database: reviews
+    storage: documents
+    model: chat
+```
+
+The platform supplies the existing storage account, data-only Blob role ID,
+identity location/group/issuer and `platform.models` metadata. Each component gets
+its own generated workload identity, federation and reflected client-ID ConfigMap.
+Storage/model intent cannot be combined with advanced Azure identity/access maps.
+`BLOB_ACCOUNT_URL`, `BLOB_CONTAINER`, `MODEL_BASE_URL`, `MODEL_DEPLOYMENT` and optional
+OTLP settings are generated as applicable; applications cannot duplicate those
+variables. API and worker images must be supplied by publication automation.
+
+Containers and identities derive from the deployment namespace/release and key.
+Blob grants use the shared custom **data-only** role at storage-account scope,
+with an ABAC condition restricting access to the generated container. Container
+administration and user-delegation keys are not workload permissions. ASO owns
+container lifecycle. The platform provisioner must have authority to create that
+shared role; ordinary RBAC Administrator role-assignment rights alone do not
+include role-definition creation. Model access uses the configured Foundry project's
+`Foundry User` role, not its publishing/management role. A model alias is configuration,
+not a per-deployment Azure authorization boundary.
+
+Dependency waves order identities/federation, containers/grants and workloads;
+Argo prunes in reverse before existing PostDelete database/credential cleanup.
+Disposable previews require explicit storage/database `reclaimPolicy: delete`.
+Storage defaults to retain via ASO `detach-on-delete`; changing the retain/delete
+policy is a lifecycle decision. No storage account or network resource is created.
+Existing default database access remains SELECT/INSERT. Opt-in `runtimeAccess:
+readWrite` appends versioned `2_read_write.sql` for table DML, sequence usage and
+function execution; runtime still receives no schema CREATE, DDL or ownership.
+The original access migration is unchanged. Applications own their domain/queue
+schema migrations, and never run schema installation at workload startup.
+
+This is a trusted-repository platform contract, not an admission-policy sandbox
+for hostile infrastructure intent. Actual Blob access denials, credential delivery,
+Azure permission propagation and ordered teardown require live acceptance.

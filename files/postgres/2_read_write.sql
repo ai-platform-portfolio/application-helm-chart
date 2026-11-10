@@ -1,0 +1,10 @@
+-- Forward-only opt-in; never edit the previously published access migration.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "{{ .runtime }}";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "{{ .runtime }}";
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO "{{ .runtime }}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "{{ .runtime }}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO "{{ .runtime }}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO "{{ .runtime }}";
