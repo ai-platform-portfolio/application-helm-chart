@@ -47,11 +47,11 @@ tests:
   template: templates/identity.yaml
   documentSelector:
     path: spec.roleDefinitionReference.wellKnownName
-    value: Foundry User
+    value: Cognitive Services OpenAI User
   asserts:
   - equal:
       path: spec.owner.armId
-      value: /subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/example-rg/providers/Microsoft.CognitiveServices/accounts/example-foundry/projects/default
+      value: /subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/example-rg/providers/Microsoft.CognitiveServices/accounts/example-foundry
   - notExists:
       path: spec.condition
   values:

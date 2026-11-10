@@ -19,6 +19,9 @@
 {{- range $name, $component := .Values.components -}}
 {{- if or $component.storage $component.model -}}
 {{- $used = true -}}
+{{- if and $component.database (eq $.Values.platform.postgres.backend "azure") -}}
+{{- fail "Combined database/storage/model intent currently requires the CNPG backend" -}}
+{{- end -}}
 {{- $identity := printf "%s-runtime" $name -}}
 {{- if and $component.database (eq $.Values.platform.postgres.backend "azure") -}}
 {{- $identity = printf "%s-runtime" $component.database -}}
@@ -36,14 +39,14 @@
 {{- $_ := set $env "BLOB_ACCOUNT_URL" (printf "https://%s.blob.core.windows.net" (required "platform.azure.storageAccount.name is required" $azure.storageAccount.name)) -}}
 {{- $_ := set $env "BLOB_CONTAINER" $container.azureName -}}
 {{- $condition := printf "(@Resource[Microsoft.Storage/storageAccounts/blobServices/containers:name] StringEquals '%s')" $container.azureName -}}
-{{- $_ := set $azure.roleAssignments (printf "%s-blob" $name) (dict "identity" $identity "roleName" "application-blob-data" "roleDefinitionId" (required "platform.azure.blobRoleId is required" $azure.blobRoleId) "scope" "storageAccount" "condition" $condition) -}}
+{{- $_ := set $azure.roleAssignments (printf "%s-blob" $name) (dict "generated" true "identity" $identity "roleName" "application-blob-data" "roleDefinitionId" (required "platform.azure.blobRoleId is required" $azure.blobRoleId) "scope" "storageAccount" "condition" $condition) -}}
 {{- end -}}
 {{- if $component.model -}}
 {{- $model := required (printf "component %s references undefined model %s" $name $component.model) (index $.Values.platform.models $component.model) -}}
 {{- $_ := set $env "MODEL_BASE_URL" (required "model endpoint is required" $model.endpoint) -}}
 {{- $_ := set $env "MODEL_DEPLOYMENT" (required "model deployment is required" $model.deployment) -}}
-{{- $scope := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.CognitiveServices/accounts/%s/projects/%s" $azure.subscriptionId (required "model resourceGroup is required" $model.resourceGroup) (required "model account is required" $model.account) (required "model project is required" $model.project) -}}
-{{- $_ := set $azure.roleAssignments (printf "%s-model" $name) (dict "identity" $identity "roleName" "Foundry User" "scope" "storageAccount" "armScope" $scope) -}}
+{{- $scope := printf "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.CognitiveServices/accounts/%s" $azure.subscriptionId (required "model resourceGroup is required" $model.resourceGroup) (required "model account is required" $model.account) -}}
+{{- $_ := set $azure.roleAssignments (printf "%s-model" $name) (dict "generated" true "identity" $identity "roleName" "Cognitive Services OpenAI User" "scope" "storageAccount" "armScope" $scope) -}}
 {{- end -}}
 {{- if $.Values.platform.telemetryEndpoint -}}
 {{- $_ := set $env "OTEL_EXPORTER_OTLP_ENDPOINT" $.Values.platform.telemetryEndpoint -}}

@@ -934,6 +934,9 @@ The platform supplies the existing storage account, data-only Blob role ID,
 identity location/group/issuer and `platform.models` metadata. Each component gets
 its own generated workload identity, federation and reflected client-ID ConfigMap.
 Storage/model intent cannot be combined with advanced Azure identity/access maps.
+The combined database/storage/model profile currently targets CNPG; combining it
+with managed-Azure database identities is rejected rather than creating duplicate
+ownership of shared-principal role grants. Existing managed-Azure consumers are unchanged.
 `BLOB_ACCOUNT_URL`, `BLOB_CONTAINER`, `MODEL_BASE_URL`, `MODEL_DEPLOYMENT` and optional
 OTLP settings are generated as applicable; applications cannot duplicate those
 variables. API and worker images must be supplied by publication automation.
@@ -944,8 +947,9 @@ with an ABAC condition restricting access to the generated container. Container
 administration and user-delegation keys are not workload permissions. ASO owns
 container lifecycle. The platform provisioner must have authority to create that
 shared role; ordinary RBAC Administrator role-assignment rights alone do not
-include role-definition creation. Model access uses the configured Foundry project's
-`Foundry User` role, not its publishing/management role. A model alias is configuration,
+include role-definition creation. Model access uses `Cognitive Services OpenAI User` on the configured model account,
+matching the existing platform inference path. It does not grant account keys,
+project connection secrets or model publishing/management rights. A model alias is configuration,
 not a per-deployment Azure authorization boundary.
 
 Dependency waves order identities/federation, containers/grants and workloads;
