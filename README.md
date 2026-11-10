@@ -111,6 +111,9 @@ and SyncFail reports failure. Each hook rechecks the live PR head before writing
 older SHA results cannot satisfy a required status on a new commit. The token
 stays in `argocd` and has only PR-read/status-write permissions. Repository
 owners must require this context in branch protection for merge enforcement.
+The preview ApplicationSet enables Argo's `retry.refresh` so a new PR head
+replaces a stale source revision during sync retries. A stale hook still cannot
+publish a status for the new head.
 
 ### Argo bootstrap — platform operator
 
