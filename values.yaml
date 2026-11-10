@@ -55,6 +55,7 @@ platform:
     valuesPath: deploy/values.yaml
     previews:
       enabled: false
+      generateHostname: true
       registry: localacrk8s.azurecr.io
       domain: preview.dev.michaelalinks.com
       sharedListener: preview-https

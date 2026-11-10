@@ -120,6 +120,7 @@
               "type": "object", "additionalProperties": false,
               "properties": {
                 "enabled": {"type": "boolean"},
+                "generateHostname": {"type": "boolean"},
                 "registry": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"},
                 "domain": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$"},
                 "sharedListener": {"type": "string", "minLength": 1},
