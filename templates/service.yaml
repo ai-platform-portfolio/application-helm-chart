@@ -1,5 +1,6 @@
 {{- include "application.defaults" . -}}
 {{- range $name, $component := .Values.components }}
+{{- if $component.port }}
 {{- $services := list $name }}
 {{- if eq $component.delivery "rollout" }}
   {{- $services = list $name (printf "%s-canary" $name) }}
@@ -35,5 +36,6 @@ spec:
       port: {{ $component.port }}
       targetPort: {{ $.Values.platform.httpPortName }}
 ---
+{{- end }}
 {{- end }}
 {{- end }}

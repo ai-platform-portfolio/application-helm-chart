@@ -913,3 +913,29 @@ This is target selection, not client authentication emulation: consumers must
 support the chosen certificate or renewable Entra-token connection contract.
 Existing cleanup requires disposable databases; Azure `retain` support and
 combined worker/storage/model portability are outside this registration change.
+
+### Workers and internal registrations
+
+Components with a `port` retain the default Service and HTTP probes. A worker
+instead declares its image and command; the chart renders a Deployment without
+container ports, a Service or default probes:
+
+```yaml
+components:
+  worker:
+    image: registry.example.test/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    command: [python, -m, backend.worker]
+    args: [--once]
+```
+
+Optional `readinessProbe` and `livenessProbe` accept native Kubernetes probe
+configuration. Explicit exec/TCP/gRPC handlers replace the default HTTP handler
+for web components. Portless workers use only their explicit probes. Routing,
+HTTP probes and Rollouts require a port.
+
+Set `platform.argocd.previews.generateHostname: false` for internal previews.
+Persistent registration targets may omit `hostname`. Both explicitly clear any
+packaged top-level hostname while retaining publication checks, isolated identity,
+database backend selection and ordered cleanup. Explicit `hosts` and routes in an
+application package remain application intent; omitting a hostname does not remove
+them or enforce network isolation. Existing web registrations keep their defaults.

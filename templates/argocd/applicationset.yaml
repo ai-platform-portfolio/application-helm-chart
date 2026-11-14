@@ -53,7 +53,7 @@ spec:
           valuesObject:
             name: {{ $name | quote }}
             namespace: {{ $name | quote }}
-            hostname: {{ printf "%s.%s" $name $preview.domain | quote }}
+            hostname: {{ ternary (printf "%s.%s" $name $preview.domain) "" $preview.generateHostname | quote }}
             platform:
               argocd:
                 enabled: false

@@ -103,3 +103,19 @@ tests:
       platform.argocd.previews.postgresBackend: azure
     asserts:
       - failedTemplate: {errorMessage: 'platform.postgres.azure.serverName is required'}
+
+  - it: clears inherited hostnames while preserving preview gates and cleanup
+    set:
+      platform.argocd.repository: https://github.com/Example/Orders.git
+      platform.argocd.previews.enabled: true
+      platform.argocd.previews.generateHostname: false
+    asserts:
+    - equal:
+        path: spec.template.spec.source.helm.valuesObject.hostname
+        value: ''
+    - equal:
+        path: spec.template.spec.source.helm.valuesObject.platform.release.check.enabled
+        value: true
+    - equal:
+        path: spec.template.spec.source.helm.valuesObject.platform.lifecycle.cleanup.enabled
+        value: true
