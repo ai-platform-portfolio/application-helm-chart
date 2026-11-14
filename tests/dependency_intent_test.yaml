@@ -143,3 +143,12 @@ tests:
   template: templates/storage-container.yaml
   asserts:
     - equal: {path: "metadata.annotations['serviceoperator.azure.com/reconcile-policy']", value: detach-on-delete}
+
+- it: supports dependency-only consumers without requiring a database for cleanup
+  values: [fixtures/dependencies.yaml]
+  set:
+    platform.lifecycle.cleanup.enabled: true
+    platform.namespaceLabels: {}
+  template: templates/lifecycle/cleanup.yaml
+  asserts:
+    - hasDocuments: {count: 0}

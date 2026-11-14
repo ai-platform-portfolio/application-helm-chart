@@ -1,7 +1,7 @@
 {{- include "application.defaults" . -}}
 {{- $cleanup := .Values.platform.lifecycle.cleanup }}
 {{- if $cleanup.enabled }}
-{{- if not .Values.databases }}
+{{- if and (not .Values.databases) (or .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations) }}
 {{- fail "cleanup requires minimal databases intent; advanced postgres maps are not supported" }}
 {{- end }}
 {{- $atlas := .Values.platform.atlas }}
