@@ -30,7 +30,6 @@
 {{- end -}}
 {{- $_ := set .Values.platform "syncWaves" (mergeOverwrite $waves .Values.platform.syncWaves) -}}
 {{- end -}}
-{{- include "application.dependencies" . -}}
 {{- range $name, $component := .Values.components -}}
 {{- $_ := set $component "healthPath" (default "/" $component.healthPath) -}}
 {{- if $component.readinessPath -}}
@@ -49,7 +48,7 @@
 {{- if eq $entry.name $envName -}}{{- fail (printf "component %s declares %s twice" $name $envName) -}}{{- end -}}
 {{- end -}}
 {{- if eq $.Values.platform.postgres.backend "azure" -}}
-{{- if and $component.identity (ne $component.identity (printf "%s-runtime" $component.database)) -}}{{- fail (printf "component %s must use its generated database identity" $name) -}}{{- end -}}
+{{- if $component.identity -}}{{- fail (printf "component %s must use its generated database identity" $name) -}}{{- end -}}
 {{- $base := include "application.resourceName" (dict "root" $ "name" $component.database) -}}
 {{- $user := printf "app_%s_app" (replace "-" "_" $base) -}}
 {{- $database := index $.Values.postgres.databases $component.database -}}

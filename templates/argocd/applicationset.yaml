@@ -53,13 +53,8 @@ spec:
           valuesObject:
             name: {{ $name | quote }}
             namespace: {{ $name | quote }}
-            hostname: {{ ternary (printf "%s.%s" $name $preview.domain) "" $preview.generateHostname | quote }}
+            hostname: {{ printf "%s.%s" $name $preview.domain | quote }}
             platform:
-              {{- if or $.Values.platform.models $.Values.platform.azure.storageAccount.name }}
-              models: {{ $.Values.platform.models | toJson }}
-              telemetryEndpoint: {{ $.Values.platform.telemetryEndpoint | quote }}
-              azure: {{ $.Values.platform.azure | toJson }}
-              {{- end }}
               argocd:
                 enabled: false
                 namespace: {{ $argo.namespace | quote }}
