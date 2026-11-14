@@ -879,6 +879,100 @@ an explicitly approved cleanup, after dropping its databases/dependencies.
 Deleting Atlas CRs alone leaves SQL objects behind. PR-close orchestration and
 backup/recovery drills remain separate implementation steps.
 
+### PostgreSQL selection at registration
+
+Platform operators select the backend separately for each registration profile:
+
+```yaml
+platform:
+  argocd:
+    previews:
+      postgresBackend: cnpg
+    environments:
+      postgresBackend: azure
+```
+
+These preserve the existing defaults. Both accept `cnpg` or `azure`; they supply
+`platform.postgres.backend` to the generated workload Application, overriding the
+packaged release's backend. Application components still name a logical database
+and the same migration directory. The choice is not inferred from preview versus
+persistent delivery, and selecting it does not migrate existing data or provision
+a server. Use a new environment or a separately reviewed data/ownership migration
+before changing the backend of an environment containing data.
+
+For `azure`, the operator supplies `platform.postgres.azure` target/CA settings,
+`platform.atlas.azureAdminUser` and `platform.azure` identity/federation context.
+Registration forwards those to the existing ASO database, Entra SQL identity,
+Atlas migration and cleanup templates; missing required metadata fails rendering.
+For `cnpg`, registration forwards the configured cluster/namespace, client Issuer,
+direct Atlas connection, role-connection Secret reference and migration client
+certificate paths. It does not require Azure server or identity metadata.
+Direct workload rendering continues to use `platform.postgres.backend` as before.
+
+This is target selection, not client authentication emulation: consumers must
+support the chosen certificate or renewable Entra-token connection contract.
+Existing cleanup requires disposable databases; Azure `retain` support and
+combined worker/storage/model portability are outside this registration change.
+
+### Workers and internal registrations
+
+Components with a `port` retain the default Service and HTTP probes. A worker
+instead declares its image and command; the chart renders a Deployment without
+container ports, a Service or default probes:
+
+```yaml
+components:
+  worker:
+    image: registry.example.test/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    command: [python, -m, backend.worker]
+    args: [--once]
+```
+
+Optional `readinessProbe` and `livenessProbe` accept native Kubernetes probe
+configuration. Explicit exec/TCP/gRPC handlers replace the default HTTP handler
+for web components. Portless workers use only their explicit probes. Routing,
+HTTP probes and Rollouts require a port.
+
+Set `platform.argocd.previews.generateHostname: false` for internal previews.
+Persistent registration targets may omit `hostname`. Both explicitly clear any
+packaged top-level hostname while retaining publication checks, isolated identity,
+database backend selection and ordered cleanup. Explicit `hosts` and routes in an
+application package remain application intent; omitting a hostname does not remove
+them or enforce network isolation. Existing web registrations keep their defaults.
+
+### Application dependency intent
+
+Components may declare logical `database`, `storage` and `model` names. The chart
+creates isolated resources, credentials and grants; applications do not copy Azure
+or database administration manifests. `storage.<name>.reclaimPolicy` controls the
+private Blob container; `databases.<name>.runtimeAccess: readWrite` opts into a
+forward-only access migration while the default remains append-only.
+
+Platform operators supply shared storage/model targets and the data-only Blob role
+in environment values. Registration forwards that metadata for previews and
+persistent environments. Container-conditioned Blob assignments stay at storage
+account scope; model access is inference-only at the declared account scope.
+
+CNPG uses per-component Azure identities alongside database client certificates.
+Azure PostgreSQL uses the generated database identity for SQL and the component's
+Blob/model grants. Components sharing a database share that SQL identity; grants
+are combined without duplicate Azure role assignments. Use separate databases
+when separate runtime privileges are required.
+
+PostgreSQL placement is selected in GitOps at
+`argocd.onboarding.databaseBackends.{previews,environments}` and forwarded by
+`templates/argocd/{applicationset,environments}.yaml`. Backend-specific expansion
+is in `templates/_database.tpl`; combined dependency wiring is in
+`templates/_dependencies.tpl`. Compatible application SQL and logical intent stay
+the same. Selection does not migrate data or install a server.
+
+Azure database `reclaimPolicy: retain` detaches its database and managed identity
+on removal, excludes its SQL role from cleanup and permits stable-name
+reattachment. Federated credentials and data-access grants are still removed.
+Azure's existing default remains delete; previews must explicitly use disposable
+resources. Retention does not survive deleting the owning server/resource group.
+Full platform teardown remains disposable. CNPG's existing cleanup guard remains.
+
 ## Foundry agent readiness-event intake
 
 `agentIntake` is an optional event subscription, not an agent deployment. It

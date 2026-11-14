@@ -2,6 +2,7 @@
 name: ""
 hostname: ""
 databases: {}
+storage: {}
 
 # Application values normally set only namespace, hosts and components.
 namespace: ""
@@ -35,6 +36,8 @@ platform:
     readerPrincipalId: ""
     github: {appId: "", installationId: "", privateKeyRemoteKey: ""}
 
+  models: {}
+  telemetryEndpoint: ""
   tests:
     playwright:
       enabled: false
@@ -73,6 +76,9 @@ platform:
     valuesPath: deploy/values.yaml
     previews:
       enabled: false
+      # Disable generated HTTP hostnames for internal applications.
+      generateHostname: true
+      postgresBackend: cnpg
       registry: localacrk8s.azurecr.io
       domain: preview.dev.michaelalinks.com
       sharedListener: preview-https
@@ -80,6 +86,7 @@ platform:
       tokenSecret: argocd-github-api
     environments:
       enabled: false
+      postgresBackend: azure
       registry: localacrk8s.azurecr.io
       # Each target reads deploy/environments/<name>/release.yaml from the delivery branch.
       targets: {}
@@ -165,6 +172,7 @@ platform:
     identityResourceGroup: ""
     keyVault: {name: "", resourceGroup: ""}
     storageAccount: {name: "", resourceGroup: ""}
+    blobRoleId: ""
     identities: {}
     roleAssignments: {}
     storageContainers: {}

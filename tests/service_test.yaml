@@ -128,3 +128,19 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: namespace is required
+
+  - it: omits Services for portless workers
+    set:
+      namespace: worker-test
+      components:
+        worker:
+          image: example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          command:
+          - python
+          - -m
+          - backend.worker
+          args:
+          - --once
+    asserts:
+    - hasDocuments:
+        count: 0

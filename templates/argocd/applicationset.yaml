@@ -53,8 +53,10 @@ spec:
           valuesObject:
             name: {{ $name | quote }}
             namespace: {{ $name | quote }}
-            hostname: {{ printf "%s.%s" $name $preview.domain | quote }}
+            hostname: {{ ternary (printf "%s.%s" $name $preview.domain) "" $preview.generateHostname | quote }}
             platform:
+              models: {{ $.Values.platform.models | toJson }}
+              telemetryEndpoint: {{ $.Values.platform.telemetryEndpoint | quote }}
               argocd:
                 enabled: false
                 namespace: {{ $argo.namespace | quote }}
@@ -73,6 +75,41 @@ spec:
                 sharedListener: {{ $preview.sharedListener | quote }}
               lifecycle:
                 cleanup: {enabled: true}
+              postgres:
+                backend: {{ $preview.postgresBackend | quote }}
+                {{- if eq $preview.postgresBackend "azure" }}
+                azure:
+                  serverName: {{ required "platform.postgres.azure.serverName is required" $.Values.platform.postgres.azure.serverName | quote }}
+                  serverResourceGroup: {{ required "platform.postgres.azure.serverResourceGroup is required" $.Values.platform.postgres.azure.serverResourceGroup | quote }}
+                  caBundlePath: {{ $.Values.platform.postgres.azure.caBundlePath | quote }}
+                {{- else }}
+                namespace: {{ $.Values.platform.postgres.namespace | quote }}
+                cluster: {{ $.Values.platform.postgres.cluster | quote }}
+                clientCertificate:
+                  {{- toYaml $.Values.platform.postgres.clientCertificate | nindent 18 }}
+                {{- end }}
+              atlas:
+                namespace: {{ $.Values.platform.atlas.namespace | quote }}
+                {{- if eq $preview.postgresBackend "azure" }}
+                azureAdminUser: {{ required "platform.atlas.azureAdminUser is required" $.Values.platform.atlas.azureAdminUser | quote }}
+                {{- else }}
+                roleConnectionSecret: {{ $.Values.platform.atlas.roleConnectionSecret | quote }}
+                connection:
+                  {{- toYaml $.Values.platform.atlas.connection | nindent 18 }}
+                clientCertificate:
+                  {{- toYaml $.Values.platform.atlas.clientCertificate | nindent 18 }}
+                {{- end }}
+              {{- if or (eq $preview.postgresBackend "azure") $.Values.platform.models $.Values.platform.azure.storageAccount.name }}
+              azure:
+                storageAccount: {{ $.Values.platform.azure.storageAccount | toJson }}
+                blobRoleId: {{ $.Values.platform.azure.blobRoleId | quote }}
+                resourceNamespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
+                subscriptionId: {{ required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId | quote }}
+                tenantId: {{ required "platform.azure.tenantId is required" $.Values.platform.azure.tenantId | quote }}
+                oidcIssuerUrl: {{ required "platform.azure.oidcIssuerUrl is required" $.Values.platform.azure.oidcIssuerUrl | quote }}
+                location: {{ required "platform.azure.location is required" $.Values.platform.azure.location | quote }}
+                identityResourceGroup: {{ required "platform.azure.identityResourceGroup is required" $.Values.platform.azure.identityResourceGroup | quote }}
+              {{- end }}
       ignoreDifferences:
         {{- include "application.rolloutDiff" $name | nindent 8 }}
       syncPolicy:
