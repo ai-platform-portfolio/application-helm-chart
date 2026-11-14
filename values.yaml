@@ -55,6 +55,8 @@ platform:
     valuesPath: deploy/values.yaml
     previews:
       enabled: false
+      # Disable generated HTTP hostnames for internal applications.
+      generateHostname: true
       postgresBackend: cnpg
       registry: localacrk8s.azurecr.io
       domain: preview.dev.michaelalinks.com

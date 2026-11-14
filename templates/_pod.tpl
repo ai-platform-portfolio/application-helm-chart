@@ -1,9 +1,19 @@
 {{- define "application.podTemplate" -}}
 {{- $readiness := deepCopy .root.Values.platform.probes.readiness -}}
 {{- $_ := set $readiness.httpGet "path" .component.healthPath -}}
+{{- if or (hasKey (default dict .component.readinessProbe) "exec") (hasKey (default dict .component.readinessProbe) "tcpSocket") (hasKey (default dict .component.readinessProbe) "grpc") -}}
+{{- $_ := unset $readiness "httpGet" -}}
+{{- end -}}
 {{- $readiness = mergeOverwrite $readiness (default dict .component.readinessProbe) -}}
 {{- $liveness := deepCopy .root.Values.platform.probes.liveness -}}
 {{- $_ := set $liveness.httpGet "path" .component.healthPath -}}
+{{- if or (hasKey (default dict .component.livenessProbe) "exec") (hasKey (default dict .component.livenessProbe) "tcpSocket") (hasKey (default dict .component.livenessProbe) "grpc") -}}
+{{- $_ := unset $liveness "httpGet" -}}
+{{- end -}}
+{{- $liveness = mergeOverwrite $liveness (default dict .component.livenessProbe) -}}
+{{- if and (not .component.port) (or .component.route .component.readinessPath (get (default dict .component.readinessProbe) "httpGet") (get (default dict .component.livenessProbe) "httpGet")) -}}
+{{- fail (printf "component %s requires a port for HTTP routing or probes" .name) -}}
+{{- end -}}
 {{- $identity := default "" .component.identity -}}
 {{- if and $identity (not (hasKey .root.Values.platform.azure.identities $identity)) -}}
 {{- fail (printf "component %s references undefined identity %s" .name $identity) -}}
@@ -65,18 +75,32 @@ spec:
       env:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .component.command }}
+      command:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .component.args }}
+      args:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .component.port }}
       ports:
         - name: {{ .root.Values.platform.httpPortName }}
           containerPort: {{ .component.port }}
+      {{- end }}
 
       securityContext:
         {{- toYaml .root.Values.platform.pod.containerSecurityContext | nindent 8 }}
 
+      {{- if or .component.port .component.readinessProbe }}
       readinessProbe:
-        {{- toYaml $readiness | nindent 8 }}
+        {{- toYaml (ternary $readiness .component.readinessProbe (not (empty .component.port))) | nindent 8 }}
+      {{- end }}
 
+      {{- if or .component.port .component.livenessProbe }}
       livenessProbe:
-        {{- toYaml $liveness | nindent 8 }}
+        {{- toYaml (ternary $liveness .component.livenessProbe (not (empty .component.port))) | nindent 8 }}
+      {{- end }}
 
       resources:
         {{- toYaml (mergeOverwrite (deepCopy .root.Values.platform.resources) (default dict .component.resources)) | nindent 8 }}
