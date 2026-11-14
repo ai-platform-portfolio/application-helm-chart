@@ -54,6 +54,8 @@ spec:
             namespace: {{ $name | quote }}
             hostname: {{ default "" $target.hostname | quote }}
             platform:
+              models: {{ $.Values.platform.models | toJson }}
+              telemetryEndpoint: {{ $.Values.platform.telemetryEndpoint | quote }}
               argocd: {enabled: false, environments: {enabled: false}}
               release:
                 check:
@@ -86,8 +88,10 @@ spec:
                 clientCertificate:
                   {{- toYaml $.Values.platform.atlas.clientCertificate | nindent 18 }}
                 {{- end }}
-              {{- if eq $persistent.postgresBackend "azure" }}
+              {{- if or (eq $persistent.postgresBackend "azure") $.Values.platform.models $.Values.platform.azure.storageAccount.name }}
               azure:
+                storageAccount: {{ $.Values.platform.azure.storageAccount | toJson }}
+                blobRoleId: {{ $.Values.platform.azure.blobRoleId | quote }}
                 resourceNamespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
                 subscriptionId: {{ required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId | quote }}
                 tenantId: {{ required "platform.azure.tenantId is required" $.Values.platform.azure.tenantId | quote }}

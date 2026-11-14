@@ -1,7 +1,7 @@
 {{- include "application.defaults" . -}}
 {{- $cleanup := .Values.platform.lifecycle.cleanup }}
 {{- if $cleanup.enabled }}
-{{- if not .Values.databases }}
+{{- if and (not .Values.databases) (or .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations) }}
 {{- fail "cleanup requires minimal databases intent; advanced postgres maps are not supported" }}
 {{- end }}
 {{- $atlas := .Values.platform.atlas }}
@@ -24,9 +24,20 @@
 {{- $clients = append $clients $client }}
 {{- end }}
 {{- end }}
+{{- $dropScope := .Values.platform.atlas.roleScope }}
+{{- if $managed }}
+{{- range $key, $database := .Values.databases }}
+{{- if eq (default "delete" $database.reclaimPolicy) "retain" }}
+{{- $base := include "application.resourceName" (dict "root" $ "name" $key) }}
+{{- $dropScope = without $dropScope (printf "app_%s_app" (replace "-" "_" $base)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $dropScope }}
 {{- $name := include "application.resourceName" (dict "root" . "name" "cleanup") }}
 {{- $empty := deepCopy . }}
 {{- $_ := set $empty.Values.postgres "roles" dict }}
+{{- $_ := set $empty.Values.platform.atlas "roleScope" $dropScope }}
 # Reverse-wave deletion finishes first. The normal Atlas resource is removed
 # before Argo creates this empty desired state.
 apiVersion: db.atlasgo.io/v1alpha1
@@ -153,5 +164,6 @@ spec:
             - {name: tmp, mountPath: /tmp}
       volumes:
         - {name: tmp, emptyDir: {}}
+{{- end }}
 {{- end }}
 {{- end }}

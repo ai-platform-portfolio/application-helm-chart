@@ -1,0 +1,154 @@
+suite: Minimal worker storage and model dependencies
+tests:
+- it: keeps workers as ordinary Deployments without Services or HTTP probes
+  template: templates/deployment.yaml
+  asserts:
+  - equal:
+      path: spec.template.spec.containers[0].command
+      value:
+      - python
+      - worker.py
+  - notExists:
+      path: spec.template.spec.containers[0].ports
+  - notExists:
+      path: spec.template.spec.containers[0].readinessProbe
+  - equal:
+      path: spec.template.spec.serviceAccountName
+      value: worker-runtime
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: MODEL_DEPLOYMENT
+        value: chat
+  values:
+  - fixtures/dependencies.yaml
+- it: omits the worker Service
+  template: templates/service.yaml
+  asserts:
+  - hasDocuments:
+      count: 0
+  values:
+  - fixtures/dependencies.yaml
+- it: keeps the container private with a stable generated name
+  template: templates/storage-container.yaml
+  asserts:
+  - matchRegex:
+      path: spec.azureName
+      pattern: ^second-pr-42-.*-[a-f0-9]{12}$
+  - equal:
+      path: spec.publicAccess
+      value: None
+  - equal:
+      path: metadata.annotations['argocd.argoproj.io/sync-wave']
+      value: '-29'
+  values:
+  - fixtures/dependencies.yaml
+- it: preserves the separate model scope and inference-only role
+  template: templates/identity.yaml
+  documentSelector:
+    path: spec.roleDefinitionReference.wellKnownName
+    value: Cognitive Services OpenAI User
+  asserts:
+  - equal:
+      path: spec.owner.armId
+      value: /subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/example-rg/providers/Microsoft.CognitiveServices/accounts/example-foundry
+  - notExists:
+      path: spec.condition
+  values:
+  - fixtures/dependencies.yaml
+- it: scopes Blob permissions by container without a broad built-in role
+  template: templates/identity.yaml
+  documentSelector:
+    path: spec.conditionVersion
+    value: '2.0'
+  asserts:
+  - equal:
+      path: spec.owner.armId
+      value: /subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/example-rg/providers/Microsoft.Storage/storageAccounts/examplestorage
+  - matchRegex:
+      path: spec.condition
+      pattern: containers:name.*StringEquals 'second-pr-42-.*[a-f0-9]{12}'
+  - notExists:
+      path: spec.roleDefinitionReference.wellKnownName
+  values:
+  - fixtures/dependencies.yaml
+
+- it: combines Azure SQL and Blob/model access through the database identity
+  values: [fixtures/dependencies.yaml, ../examples/azure-managed.yaml]
+  set:
+    components.worker.database: records
+    databases.records: {reclaimPolicy: delete, runtimeAccess: readWrite}
+  template: templates/deployment.yaml
+  asserts:
+    - equal: {path: "spec.template.spec.serviceAccountName", value: records-runtime}
+    - contains: {path: "spec.template.spec.containers[0].env", content: {name: DATABASE_AUTH, value: entra}}
+    - contains: {path: "spec.template.spec.containers[0].env", content: {name: MODEL_DEPLOYMENT, value: chat}}
+
+- it: deduplicates grants when components share an Azure database identity
+  values: [fixtures/dependencies.yaml, ../examples/azure-managed.yaml]
+  set:
+    components.worker.database: records
+    components.api: {port: 8000, image: 'example/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', database: records, storage: documents, model: chat}
+    databases.records: {reclaimPolicy: delete}
+  template: templates/identity.yaml
+  asserts:
+    - hasDocuments: {count: 4}
+
+- it: retains an Azure database when explicitly requested
+  values: [fixtures/dependencies.yaml, ../examples/azure-managed.yaml]
+  set:
+    components.worker.database: records
+    databases.records: {reclaimPolicy: retain}
+  template: templates/postgres.yaml
+  asserts:
+    - equal: {path: "metadata.annotations['serviceoperator.azure.com/reconcile-policy']", value: detach-on-delete}
+
+- it: retains the corresponding Azure identity for reattachment
+  values: [fixtures/dependencies.yaml, ../examples/azure-managed.yaml]
+  set:
+    components.worker.database: records
+    databases.records: {reclaimPolicy: retain}
+  template: templates/identity.yaml
+  documentSelector: {path: "kind", value: UserAssignedIdentity}
+  asserts:
+    - equal: {path: "metadata.annotations['serviceoperator.azure.com/reconcile-policy']", value: detach-on-delete}
+
+- it: leaves retained Azure SQL roles out of deletion hooks
+  values: [fixtures/dependencies.yaml, ../examples/azure-managed.yaml]
+  set:
+    components.worker.database: records
+    databases.records: {reclaimPolicy: retain}
+    platform.lifecycle.cleanup.enabled: true
+  template: templates/lifecycle/cleanup.yaml
+  asserts:
+    - hasDocuments: {count: 0}
+
+- it: rejects retaining an Azure preview database
+  values: [fixtures/dependencies.yaml, ../examples/azure-managed.yaml, fixtures/preview-label.yaml]
+  set:
+    components.worker.database: records
+    databases.records: {reclaimPolicy: retain}
+  template: templates/lifecycle/cleanup.yaml
+  asserts:
+    - failedTemplate: {errorPattern: 'Azure previews require reclaimPolicy: delete'}
+
+
+- it: permits explicit retained storage in persistent lifecycle cleanup
+  values: [fixtures/dependencies.yaml, ../examples/azure-managed.yaml]
+  set:
+    components.worker.database: records
+    databases.records: {reclaimPolicy: delete}
+    storage.documents.reclaimPolicy: retain
+    platform.lifecycle.cleanup.enabled: true
+  template: templates/storage-container.yaml
+  asserts:
+    - equal: {path: "metadata.annotations['serviceoperator.azure.com/reconcile-policy']", value: detach-on-delete}
+
+- it: supports dependency-only consumers without requiring a database for cleanup
+  values: [fixtures/dependencies.yaml]
+  set:
+    platform.lifecycle.cleanup.enabled: true
+    platform.namespaceLabels: {}
+  template: templates/lifecycle/cleanup.yaml
+  asserts:
+    - hasDocuments: {count: 0}

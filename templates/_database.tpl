@@ -139,6 +139,10 @@ postgres:
       local:
         1_access.sql: |
 {{ .root.Files.Get "files/postgres/1_access.sql" | indent 10 }}
+        {{- if eq (default "append" .database.runtimeAccess) "readWrite" }}
+        2_read_write.sql: |
+{{ .root.Files.Get "files/postgres/2_read_write.sql" | indent 10 }}
+        {{- end }}
     {{- with .database.migration }}
     {{ $.name }}:
       database: {{ $.name }}
@@ -153,8 +157,8 @@ postgres:
 
 {{/* A managed database has a distinct Entra runtime identity and Atlas-owned SQL. */}}
 {{- define "application.azureDatabaseDefaults" -}}
-{{- if and .database.reclaimPolicy (ne .database.reclaimPolicy "delete") -}}
-{{- fail "Azure database cleanup requires reclaimPolicy: delete" -}}
+{{- if and (eq (get .root.Values.platform.namespaceLabels "gitops.platform/preview") "true") (ne (default "delete" .database.reclaimPolicy) "delete") -}}
+{{- fail "Azure previews require reclaimPolicy: delete" -}}
 {{- end -}}
 {{- $base := include "application.resourceName" (dict "root" .root "name" .name) -}}
 {{- $sql := printf "app_%s" (replace "-" "_" $base) -}}
@@ -170,12 +174,14 @@ platform:
     identities:
       {{ $identity }}:
         azureName: {{ printf "id-%s" $base | quote }}
+        reclaimPolicy: {{ default "delete" .database.reclaimPolicy }}
         reflectToApplication: true
 
 postgres:
   databases:
     {{ .name }}:
       name: {{ $databaseName | quote }}
+      reclaimPolicy: {{ default "delete" .database.reclaimPolicy }}
   roles:
     {{ $runtime }}:
       login: true
@@ -201,6 +207,10 @@ postgres:
       local:
         1_access.sql: |
 {{ .root.Files.Get "files/postgres/1_access.sql" | indent 10 }}
+        {{- if eq (default "append" .database.runtimeAccess) "readWrite" }}
+        2_read_write.sql: |
+{{ .root.Files.Get "files/postgres/2_read_write.sql" | indent 10 }}
+        {{- end }}
     {{- with .database.migration }}
     {{ $.name }}:
       database: {{ $.name }}

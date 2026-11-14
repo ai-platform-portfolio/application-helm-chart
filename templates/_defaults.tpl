@@ -10,6 +10,7 @@
 {{- if .Values.hostname -}}
 {{- $_ := set .Values.hosts "web" (dict "hostname" .Values.hostname) -}}
 {{- end -}}
+{{- include "application.dependencies" . -}}
 {{- if .Values.databases -}}
 {{- if or .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations -}}
 {{- fail "Use databases intent or advanced postgres resource maps, not both" -}}
@@ -48,7 +49,7 @@
 {{- if eq $entry.name $envName -}}{{- fail (printf "component %s declares %s twice" $name $envName) -}}{{- end -}}
 {{- end -}}
 {{- if eq $.Values.platform.postgres.backend "azure" -}}
-{{- if $component.identity -}}{{- fail (printf "component %s must use its generated database identity" $name) -}}{{- end -}}
+{{- if and $component.identity (ne $component.identity (printf "%s-runtime" $component.database)) -}}{{- fail (printf "component %s must use its generated database identity" $name) -}}{{- end -}}
 {{- $base := include "application.resourceName" (dict "root" $ "name" $component.database) -}}
 {{- $user := printf "app_%s_app" (replace "-" "_" $base) -}}
 {{- $database := index $.Values.postgres.databases $component.database -}}
