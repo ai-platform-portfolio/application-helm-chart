@@ -1,0 +1,3 @@
+platform:
+  namespaceLabels:
+    gitops.platform/preview: 'true'

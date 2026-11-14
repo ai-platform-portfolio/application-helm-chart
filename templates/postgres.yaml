@@ -12,6 +12,9 @@ metadata:
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
   annotations:
     argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "database" | quote }}
+    {{- if eq (default $.Values.platform.postgres.databaseReclaimPolicy $database.reclaimPolicy) "retain" }}
+    serviceoperator.azure.com/reconcile-policy: detach-on-delete
+    {{- end }}
 spec:
   azureName: {{ $database.name | quote }}
   owner: {armId: {{ $server | quote }}}

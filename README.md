@@ -939,3 +939,36 @@ packaged top-level hostname while retaining publication checks, isolated identit
 database backend selection and ordered cleanup. Explicit `hosts` and routes in an
 application package remain application intent; omitting a hostname does not remove
 them or enforce network isolation. Existing web registrations keep their defaults.
+
+### Application dependency intent
+
+Components may declare logical `database`, `storage` and `model` names. The chart
+creates isolated resources, credentials and grants; applications do not copy Azure
+or database administration manifests. `storage.<name>.reclaimPolicy` controls the
+private Blob container; `databases.<name>.runtimeAccess: readWrite` opts into a
+forward-only access migration while the default remains append-only.
+
+Platform operators supply shared storage/model targets and the data-only Blob role
+in environment values. Registration forwards that metadata for previews and
+persistent environments. Container-conditioned Blob assignments stay at storage
+account scope; model access is inference-only at the declared account scope.
+
+CNPG uses per-component Azure identities alongside database client certificates.
+Azure PostgreSQL uses the generated database identity for SQL and the component's
+Blob/model grants. Components sharing a database share that SQL identity; grants
+are combined without duplicate Azure role assignments. Use separate databases
+when separate runtime privileges are required.
+
+PostgreSQL placement is selected in GitOps at
+`argocd.onboarding.databaseBackends.{previews,environments}` and forwarded by
+`templates/argocd/{applicationset,environments}.yaml`. Backend-specific expansion
+is in `templates/_database.tpl`; combined dependency wiring is in
+`templates/_dependencies.tpl`. Compatible application SQL and logical intent stay
+the same. Selection does not migrate data or install a server.
+
+Azure database `reclaimPolicy: retain` detaches its database and managed identity
+on removal, excludes its SQL role from cleanup and permits stable-name
+reattachment. Federated credentials and data-access grants are still removed.
+Azure's existing default remains delete; previews must explicitly use disposable
+resources. Retention does not survive deleting the owning server/resource group.
+Full platform teardown remains disposable. CNPG's existing cleanup guard remains.
