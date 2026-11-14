@@ -1,0 +1,46 @@
+suite: Native agent event intake
+values: []
+templates:
+  - agents/events.yaml
+  - credentials/agent-events.yaml
+set:
+  namespace: consumer-one
+  agentIntake:
+    enabled: true
+    repository: example/agent-catalog
+    agent: sre
+    target: {namespace: investigation-target, workload: api}
+  platform.agentIntake.github:
+    appId: '123'
+    installationId: '456'
+    privateKeyRemoteKey: existing-key
+
+tests:
+  - it: Watches only the declared namespace and dispatches metadata without a Job
+    template: agents/events.yaml
+    documentSelector: {path: kind, value: EventSource}
+    asserts:
+      - equal: {path: spec.resource.readiness.namespace, value: investigation-target}
+      - equal: {path: spec.resource.readiness.resource, value: events}
+      - equal: {path: spec.eventBusName, value: platform}
+
+  - it: Uses a bounded native HTTP dispatch and scoped short-lived token
+    template: agents/events.yaml
+    documentSelector: {path: kind, value: Sensor}
+    asserts:
+      - equal: {path: "spec.triggers[0].template.http.url", value: 'https://api.github.com/repos/example/agent-catalog/dispatches'}
+      - equal: {path: "spec.triggers[0].rateLimit.requestsPerUnit", value: 2}
+      - equal: {path: "spec.triggers[0].template.http.payload[4].src.dataKey", value: body.metadata.uid}
+      - notExists: {path: "spec.triggers[0].template.k8s"}
+
+  - it: Restricts the App installation token to the consuming repository
+    template: credentials/agent-events.yaml
+    documentSelector: {path: kind, value: GithubAccessToken}
+    asserts:
+      - equal: {path: spec.repositories, value: [agent-catalog]}
+      - equal: {path: spec.permissions, value: {contents: write}}
+
+  - it: Creates no intake resources when disabled
+    set: {agentIntake.enabled: false}
+    asserts:
+      - hasDocuments: {count: 0}

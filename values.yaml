@@ -8,6 +8,13 @@ namespace: ""
 hosts: {}
 components: {}
 
+# Optional event subscription; agent execution remains in Foundry.
+agentIntake:
+  enabled: false
+  repository: ""
+  agent: ""
+  target: {namespace: "", workload: ""}
+
 # Platform environment inputs; empty maps render no database resources.
 postgres:
   databases: {}
@@ -17,6 +24,17 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  agentIntake:
+    namespace: cluster-onboarding
+    eventBus: platform
+    secretStore: azure-kv
+    nodeSelector: {agentpool: platform}
+    resources:
+      requests: {cpu: 10m, memory: 64Mi}
+      limits: {memory: 256Mi}
+    readerPrincipalId: ""
+    github: {appId: "", installationId: "", privateKeyRemoteKey: ""}
+
   tests:
     playwright:
       enabled: false

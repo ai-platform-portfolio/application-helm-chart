@@ -3,7 +3,7 @@
 {{- range .Values.platform.credentials }}
 {{- if . }}{{- $credentials = true }}{{- end }}
 {{- end }}
-{{- if or $credentials .Values.components .Values.hosts .Values.platform.azure.identities .Values.platform.azure.storageContainers .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations .Values.platform.atlas.roleScope .Values.platform.tests.playwright.enabled }}
+{{- if or .Values.agentIntake.enabled $credentials .Values.components .Values.hosts .Values.platform.azure.identities .Values.platform.azure.storageContainers .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations .Values.platform.atlas.roleScope .Values.platform.tests.playwright.enabled }}
 {{- $labels := deepCopy .Values.platform.namespaceLabels -}}
 {{- if .Values.platform.tests.playwright.enabled -}}
 {{- $_ := set $labels "gitops.platform/testkube-client" "true" -}}

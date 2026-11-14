@@ -31,6 +31,49 @@
     }
   },
   "properties": {
+    "agentIntake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "repository",
+        "agent",
+        "target"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^$|^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "agent": {
+          "type": "string",
+          "pattern": "^$|^[a-z0-9][a-z0-9-]*$"
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "namespace",
+            "workload"
+          ],
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            },
+            "workload": {
+              "type": "string",
+              "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            }
+          }
+        }
+      }
+    },
     "name": {"type": "string", "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63},
     "hostname": {"type": "string", "pattern": "^[^*]*$"},
     "databases": {

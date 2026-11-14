@@ -878,3 +878,56 @@ role. Keep the ownership scope while reconciling an empty desired role set for
 an explicitly approved cleanup, after dropping its databases/dependencies.
 Deleting Atlas CRs alone leaves SQL objects behind. PR-close orchestration and
 backup/recovery drills remain separate implementation steps.
+
+## Foundry agent readiness-event intake
+
+`agentIntake` is an optional event subscription, not an agent deployment. It
+reuses the installed Argo Events bus, dispatches readiness Event metadata to a
+consumer repository and leaves all agent/model execution in Foundry.
+
+```yaml
+name: my-agent
+namespace: my-agent
+
+agentIntake:
+  enabled: true
+  repository: example/agent-catalog
+  agent: investigator
+  target:
+    namespace: selected-investigation-namespace
+    workload: api
+```
+
+The operator supplies `platform.agentIntake.github` (existing App ID,
+installation ID and Key Vault private-key secret name), and optionally
+`readerPrincipalId` from the deployed Foundry agent's **instance identity**.
+These are bootstrap metadata, not values developers repeat for each event.
+Argo registration propagates this metadata and the selected target into child
+reconciliation; child registration remains disabled.
+
+Templates own stable namespace/release-derived names, namespace-scoped Event
+watch RBAC, separate source/sensor accounts, resources, native filters, HTTP
+retry and two-dispatches/minute rate limiting. Only the Event UID and fixed
+agent/namespace/workload metadata cross the dispatch boundary. Foundry's state
+store performs per-caller UID deduplication for 24 hours. Repeated event delivery
+may retry a failed handoff, but the publisher uses one deterministic incident
+branch and never overwrites a different proposal or reopens a closed PR.
+
+The existing GitHub App must permit contents write for repository_dispatch.
+ESO's native GitHub generator requires a PEM, so it copies the existing Key Vault
+App key; this is not a new key or a claim of keyless GitHub authentication. The
+sensor cannot read that key. It reads only its repository-scoped installation
+token, refreshed every 15 minutes and expiring after one hour. No certificate,
+gateway, new EventBus or Job is introduced.
+
+An optional native Kubernetes Role/RoleBinding grants the Foundry instance
+identity reads of workloads, Pods/logs and Events in the selected namespace. It
+never grants Secrets access or mutation. This targets Entra-integrated Kubernetes
+RBAC; Azure RBAC authorization needs the corresponding Azure-owned assignment.
+Network reachability is a separate acceptance gate. Rendering RBAC does not open
+an AKS API firewall or prove a Foundry connection works.
+
+Removing the Argo application with its finalizer removes these owned resources;
+the shared EventBus, shared operators, source workload and Key Vault key remain.
+Stop this subscription before retiring the Foundry agent. Drain/cancel incident
+workflows before deleting agent versions or their referenced knowledge stores.

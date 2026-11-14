@@ -23,7 +23,15 @@ spec:
         valueFiles: [{{ printf "$application/%s" $argo.valuesPath | quote }}]
         # The child renders workloads only, even if registration was enabled at bootstrap.
         valuesObject:
+          {{- if .Values.agentIntake.enabled }}
+          agentIntake:
+            {{- toYaml .Values.agentIntake | nindent 12 }}
+          {{- end }}
           platform:
+            {{- if .Values.agentIntake.enabled }}
+            agentIntake:
+              {{- toYaml .Values.platform.agentIntake | nindent 14 }}
+            {{- end }}
             argocd: {enabled: false}
             lifecycle:
               cleanup:

@@ -1,0 +1,144 @@
+{{- include "application.defaults" . -}}
+{{- $intent := .Values.agentIntake -}}
+{{- if $intent.enabled -}}
+{{- $platform := .Values.platform.agentIntake -}}
+{{- $namespace := required "agentIntake.target.namespace is required" $intent.target.namespace -}}
+{{- $workload := required "agentIntake.target.workload is required" $intent.target.workload -}}
+{{- $name := include "application.resourceName" (dict "root" . "name" "agent-events") -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: {{ $name }}-source, namespace: {{ $platform.namespace }}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: {{ $name }}-sensor, namespace: {{ $platform.namespace }}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: {{ $name }}-watch, namespace: {{ $namespace }}}
+rules:
+  - apiGroups: ['']
+    resources: [events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: {{ $name }}-watch, namespace: {{ $namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}-watch}
+subjects:
+  - {kind: ServiceAccount, name: {{ $name }}-source, namespace: {{ $platform.namespace }}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: {{ $name }}-token, namespace: {{ $platform.namespace }}}
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: [{{ $name }}-dispatch]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: {{ $name }}-token, namespace: {{ $platform.namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}-token}
+subjects:
+  - {kind: ServiceAccount, name: {{ $name }}-sensor, namespace: {{ $platform.namespace }}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata: {name: {{ $name }}, namespace: {{ $platform.namespace }}}
+spec:
+  eventBusName: {{ $platform.eventBus }}
+  template:
+    serviceAccountName: {{ $name }}-source
+    nodeSelector: {{ toJson $platform.nodeSelector }}
+    container:
+      resources: {{ toJson $platform.resources }}
+  resource:
+    readiness:
+      namespace: {{ $namespace }}
+      group: ''
+      version: v1
+      resource: events
+      eventTypes: [ADD]
+      filter: {afterStart: false}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata: {name: {{ $name }}, namespace: {{ $platform.namespace }}}
+spec:
+  eventBusName: {{ $platform.eventBus }}
+  template:
+    serviceAccountName: {{ $name }}-sensor
+    nodeSelector: {{ toJson $platform.nodeSelector }}
+    container:
+      resources: {{ toJson $platform.resources }}
+  dependencies:
+    - name: readiness
+      eventSourceName: {{ $name }}
+      eventName: readiness
+      filters:
+        data:
+          - {path: type, type: string, value: ['^ADD$']}
+          - {path: body.type, type: string, value: ['^Warning$']}
+          - {path: body.reason, type: string, value: ['^Unhealthy$']}
+          - {path: body.message, type: string, value: ['^Readiness probe failed:']}
+          - {path: body.involvedObject.kind, type: string, value: ['^Pod$']}
+          - {path: body.involvedObject.name, type: string, value: [{{ printf "^%s-" $workload | quote }}]}
+          - {path: body.metadata.uid, type: string, value: ['^[a-f0-9-]{36}$']}
+  triggers:
+    - template:
+        name: dispatch
+        http:
+          url: {{ printf "https://api.github.com/repos/%s/dispatches" $intent.repository | quote }}
+          method: POST
+          timeout: 15
+          headers:
+            Accept: application/vnd.github+json
+            Content-Type: application/json
+          secureHeaders:
+            - name: Authorization
+              valueFrom:
+                secretKeyRef: {name: {{ $name }}-dispatch, key: authorization}
+          payload:
+            - src: {value: agent-incident}
+              dest: event_type
+            - src: {value: {{ $intent.agent | quote }}}
+              dest: client_payload.agent
+            - src: {value: {{ $namespace | quote }}}
+              dest: client_payload.namespace
+            - src: {value: {{ $workload | quote }}}
+              dest: client_payload.workload
+            - src: {dependencyName: readiness, dataKey: body.metadata.uid}
+              dest: client_payload.event_uid
+      policy:
+        status: {allow: [204]}
+      retryStrategy:
+        steps: 3
+        duration: 5s
+        factor: 2
+      rateLimit: {unit: Minute, requestsPerUnit: 2}
+{{- if $platform.readerPrincipalId }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: {{ $name }}-reader, namespace: {{ $namespace }}}
+rules:
+  - apiGroups: ['']
+    resources: [pods, pods/log, events]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get]
+  - apiGroups: [argoproj.io]
+    resources: [rollouts]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: {{ $name }}-reader, namespace: {{ $namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}-reader}
+subjects:
+  - {kind: User, name: {{ $platform.readerPrincipalId | quote }}, apiGroup: rbac.authorization.k8s.io}
+{{- end }}
+{{- end }}
