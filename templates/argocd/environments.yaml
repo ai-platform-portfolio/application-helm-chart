@@ -63,18 +63,38 @@ spec:
               lifecycle:
                 cleanup: {enabled: true}
               postgres:
-                backend: azure
+                backend: {{ $persistent.postgresBackend | quote }}
+                {{- if eq $persistent.postgresBackend "azure" }}
                 azure:
                   serverName: {{ required "platform.postgres.azure.serverName is required" $.Values.platform.postgres.azure.serverName | quote }}
                   serverResourceGroup: {{ required "platform.postgres.azure.serverResourceGroup is required" $.Values.platform.postgres.azure.serverResourceGroup | quote }}
+                  caBundlePath: {{ $.Values.platform.postgres.azure.caBundlePath | quote }}
+                {{- else }}
+                namespace: {{ $.Values.platform.postgres.namespace | quote }}
+                cluster: {{ $.Values.platform.postgres.cluster | quote }}
+                clientCertificate:
+                  {{- toYaml $.Values.platform.postgres.clientCertificate | nindent 18 }}
+                {{- end }}
               atlas:
+                namespace: {{ $.Values.platform.atlas.namespace | quote }}
+                {{- if eq $persistent.postgresBackend "azure" }}
                 azureAdminUser: {{ required "platform.atlas.azureAdminUser is required" $.Values.platform.atlas.azureAdminUser | quote }}
+                {{- else }}
+                roleConnectionSecret: {{ $.Values.platform.atlas.roleConnectionSecret | quote }}
+                connection:
+                  {{- toYaml $.Values.platform.atlas.connection | nindent 18 }}
+                clientCertificate:
+                  {{- toYaml $.Values.platform.atlas.clientCertificate | nindent 18 }}
+                {{- end }}
+              {{- if eq $persistent.postgresBackend "azure" }}
               azure:
+                resourceNamespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
                 subscriptionId: {{ required "platform.azure.subscriptionId is required" $.Values.platform.azure.subscriptionId | quote }}
                 tenantId: {{ required "platform.azure.tenantId is required" $.Values.platform.azure.tenantId | quote }}
                 oidcIssuerUrl: {{ required "platform.azure.oidcIssuerUrl is required" $.Values.platform.azure.oidcIssuerUrl | quote }}
                 location: {{ required "platform.azure.location is required" $.Values.platform.azure.location | quote }}
                 identityResourceGroup: {{ required "platform.azure.identityResourceGroup is required" $.Values.platform.azure.identityResourceGroup | quote }}
+              {{- end }}
       ignoreDifferences:
         {{- include "application.rolloutDiff" $name | nindent 8 }}
       syncPolicy:

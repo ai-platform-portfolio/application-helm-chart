@@ -64,3 +64,42 @@ tests:
       platform.argocd.previews.enabled: true
     asserts:
       - failedTemplate: {errorMessage: 'previews require an HTTPS github.com owner/repository URL'}
+
+  - it: selects CNPG explicitly and forwards its shared connection and issuer
+    set:
+      platform.argocd.repository: https://github.com/example/orders.git
+      platform.argocd.previews.enabled: true
+      platform.postgres.cluster: shared-cluster
+      platform.postgres.clientCertificate.issuerRef.name: shared-client
+      platform.atlas.connection.host: direct.postgres.example.test
+    asserts:
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.backend, value: cnpg}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.cluster, value: shared-cluster}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.clientCertificate.issuerRef.name, value: shared-client}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.atlas.connection.host, value: direct.postgres.example.test}
+      - notExists: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.azure}
+      - notExists: {path: spec.template.spec.source.helm.valuesObject.platform.azure}
+
+  - it: selects Flexible Server previews through the existing Entra identity templates
+    values: [../examples/azure-managed.yaml]
+    set:
+      platform.argocd.repository: https://github.com/example/orders.git
+      platform.argocd.previews.enabled: true
+      platform.argocd.previews.postgresBackend: azure
+      platform.postgres.azure.caBundlePath: /etc/ssl/shared-ca.pem
+    asserts:
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.backend, value: azure}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.azure.serverName, value: example-pg}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.azure.caBundlePath, value: /etc/ssl/shared-ca.pem}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.atlas.azureAdminUser, value: example-atlas-identity}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.azure.identityResourceGroup, value: example-rg}
+      - notExists: {path: spec.template.spec.source.helm.valuesObject.platform.atlas.clientCertificate}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.lifecycle.cleanup.enabled, value: true}
+
+  - it: refuses Azure previews without platform target metadata
+    set:
+      platform.argocd.repository: https://github.com/example/orders.git
+      platform.argocd.previews.enabled: true
+      platform.argocd.previews.postgresBackend: azure
+    asserts:
+      - failedTemplate: {errorMessage: 'platform.postgres.azure.serverName is required'}
