@@ -259,115 +259,70 @@ tests:
   - it: renders a portless worker without default HTTP probes
     set:
       namespace: worker-test
-      components: &id001
-        worker:
-          image: example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          command:
-          - python
-          - -m
-          - backend.worker
-          args:
-          - --once
+      components.worker: {args: [--once], command: [python, -m, backend.worker], image: 'example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+
     asserts:
-    - equal:
-        path: spec.template.spec.containers[0].command
-        value:
-        - python
-        - -m
-        - backend.worker
-    - equal:
-        path: spec.template.spec.containers[0].args
-        value:
-        - --once
-    - notExists:
-        path: spec.template.spec.containers[0].ports
-    - notExists:
-        path: spec.template.spec.containers[0].readinessProbe
-    - notExists:
-        path: spec.template.spec.containers[0].livenessProbe
+      - equal: {path: 'spec.template.spec.containers[0].command', value: [python, -m, backend.worker]}
+      - equal: {path: 'spec.template.spec.containers[0].args', value: [--once]}
+      - notExists: {path: 'spec.template.spec.containers[0].ports'}
+      - notExists: {path: 'spec.template.spec.containers[0].readinessProbe'}
+      - notExists: {path: 'spec.template.spec.containers[0].livenessProbe'}
+
   - it: renders explicit worker probes without inherited HTTP handlers
     set:
       namespace: worker-test
-      components: *id001
-      components.worker.readinessProbe:
-        exec:
-          command:
-          - 'true'
-        periodSeconds: 5
-      components.worker.livenessProbe:
-        exec:
-          command:
-          - 'true'
+      components.worker: {args: [--once], command: [python, -m, backend.worker], image: 'example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+      components.worker.readinessProbe: {exec: {command: ['true']}, periodSeconds: 5}
+      components.worker.livenessProbe: {exec: {command: ['true']}}
+
     asserts:
-    - equal:
-        path: spec.template.spec.containers[0].readinessProbe
-        value:
-          exec:
-            command:
-            - 'true'
-          periodSeconds: 5
-    - equal:
-        path: spec.template.spec.containers[0].livenessProbe
-        value:
-          exec:
-            command:
-            - 'true'
+      - equal: {path: 'spec.template.spec.containers[0].readinessProbe', value: {exec: {command: ['true']}, periodSeconds: 5}}
+      - equal: {path: 'spec.template.spec.containers[0].livenessProbe', value: {exec: {command: ['true']}}}
+
   - it: replaces default HTTP handlers for explicit web exec probes
-    values:
-    - ../examples/application.yaml
-    - ../examples/preview.yaml
+    values: [../examples/application.yaml, ../examples/preview.yaml]
     set:
-      components.frontend.readinessProbe:
-        exec:
-          command:
-          - 'true'
-      components.frontend.livenessProbe:
-        exec:
-          command:
-          - 'true'
+      components.frontend.readinessProbe: {exec: {command: ['true']}}
+      components.frontend.livenessProbe: {exec: {command: ['true']}}
+
     asserts:
-    - notExists:
-        path: spec.template.spec.containers[0].readinessProbe.httpGet
-    - notExists:
-        path: spec.template.spec.containers[0].livenessProbe.httpGet
-    - equal:
-        path: spec.template.spec.containers[0].readinessProbe.exec.command
-        value:
-        - 'true'
+      - notExists: {path: 'spec.template.spec.containers[0].readinessProbe.httpGet'}
+      - notExists: {path: 'spec.template.spec.containers[0].livenessProbe.httpGet'}
+      - equal: {path: 'spec.template.spec.containers[0].readinessProbe.exec.command', value: ['true']}
+
   - it: rejects portless rollouts
     set:
       namespace: worker-test
-      components: *id001
+      components.worker: {args: [--once], command: [python, -m, backend.worker], image: 'example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
       components.worker.delivery: rollout
+
     asserts:
-    - failedTemplate:
-        errorPattern: port
+      - failedTemplate: {errorPattern: port}
+
   - it: rejects portless routes
     set:
       namespace: worker-test
-      components: *id001
-      components.worker.route:
-        host: web
-        path: /
+      components.worker: {args: [--once], command: [python, -m, backend.worker], image: 'example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+      components.worker.route: {host: web, path: /}
+
     asserts:
-    - failedTemplate:
-        errorPattern: port
+      - failedTemplate: {errorPattern: port}
+
   - it: rejects portless HTTP probes
     set:
       namespace: worker-test
-      components: *id001
-      components.worker.readinessProbe:
-        httpGet:
-          path: /
+      components.worker: {args: [--once], command: [python, -m, backend.worker], image: 'example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+      components.worker.readinessProbe: {httpGet: {path: /}}
+
     asserts:
-    - failedTemplate:
-        errorPattern: requires a port
+      - failedTemplate: {errorPattern: requires a port}
+
   - it: rejects portless implicit routes
     set:
       namespace: worker-test
-      components: *id001
+      components.worker: {args: [--once], command: [python, -m, backend.worker], image: 'example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
       hostname: worker.example.test
       platform.gateway.defaultComponent: worker
+
     asserts:
-    - failedTemplate:
-        errorPattern: requires a port
+      - failedTemplate: {errorPattern: requires a port}

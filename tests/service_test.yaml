@@ -132,15 +132,7 @@ tests:
   - it: omits Services for portless workers
     set:
       namespace: worker-test
-      components:
-        worker:
-          image: example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          command:
-          - python
-          - -m
-          - backend.worker
-          args:
-          - --once
+      components.worker: {args: [--once], command: [python, -m, backend.worker], image: 'example/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+
     asserts:
-    - hasDocuments:
-        count: 0
+      - hasDocuments: {count: 0}
