@@ -56,3 +56,27 @@ tests:
     asserts:
       - hasDocuments: {count: 2, filterAware: true}
       - matchRegex: {path: spec.template.spec.source.targetRevision, pattern: '\{\{\.release.version\}\}'}
+
+  - it: retains Azure as the persistent registration default
+    values: [../examples/azure-managed.yaml, ../examples/persistent-registration.yaml]
+    template: templates/argocd/environments.yaml
+    documentSelector: {path: kind, value: ApplicationSet, matchMany: true}
+    asserts:
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.backend, value: azure}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.atlas.azureAdminUser, value: example-atlas-identity}
+
+  - it: supports persistent CNPG without Azure server or identity prerequisites
+    values: [../examples/persistent-registration.yaml]
+    set:
+      platform.argocd.environments.postgresBackend: cnpg
+      platform.postgres.cluster: shared-cluster
+      platform.atlas.connection.host: direct.postgres.example.test
+    template: templates/argocd/environments.yaml
+    documentSelector: {path: kind, value: ApplicationSet, matchMany: true}
+    asserts:
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.backend, value: cnpg}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.postgres.cluster, value: shared-cluster}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.atlas.connection.host, value: direct.postgres.example.test}
+      - notExists: {path: spec.template.spec.source.helm.valuesObject.platform.azure}
+      - notExists: {path: spec.template.spec.source.helm.valuesObject.platform.atlas.azureAdminUser}
+      - equal: {path: spec.template.spec.source.helm.valuesObject.platform.lifecycle.cleanup.enabled, value: true}

@@ -878,3 +878,38 @@ role. Keep the ownership scope while reconciling an empty desired role set for
 an explicitly approved cleanup, after dropping its databases/dependencies.
 Deleting Atlas CRs alone leaves SQL objects behind. PR-close orchestration and
 backup/recovery drills remain separate implementation steps.
+
+### PostgreSQL selection at registration
+
+Platform operators select the backend separately for each registration profile:
+
+```yaml
+platform:
+  argocd:
+    previews:
+      postgresBackend: cnpg
+    environments:
+      postgresBackend: azure
+```
+
+These preserve the existing defaults. Both accept `cnpg` or `azure`; they supply
+`platform.postgres.backend` to the generated workload Application, overriding the
+packaged release's backend. Application components still name a logical database
+and the same migration directory. The choice is not inferred from preview versus
+persistent delivery, and selecting it does not migrate existing data or provision
+a server. Use a new environment or a separately reviewed data/ownership migration
+before changing the backend of an environment containing data.
+
+For `azure`, the operator supplies `platform.postgres.azure` target/CA settings,
+`platform.atlas.azureAdminUser` and `platform.azure` identity/federation context.
+Registration forwards those to the existing ASO database, Entra SQL identity,
+Atlas migration and cleanup templates; missing required metadata fails rendering.
+For `cnpg`, registration forwards the configured cluster/namespace, client Issuer,
+direct Atlas connection, role-connection Secret reference and migration client
+certificate paths. It does not require Azure server or identity metadata.
+Direct workload rendering continues to use `platform.postgres.backend` as before.
+
+This is target selection, not client authentication emulation: consumers must
+support the chosen certificate or renewable Entra-token connection contract.
+Existing cleanup requires disposable databases; Azure `retain` support and
+combined worker/storage/model portability are outside this registration change.

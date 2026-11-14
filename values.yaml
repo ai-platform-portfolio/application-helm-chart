@@ -55,6 +55,7 @@ platform:
     valuesPath: deploy/values.yaml
     previews:
       enabled: false
+      postgresBackend: cnpg
       registry: localacrk8s.azurecr.io
       domain: preview.dev.michaelalinks.com
       sharedListener: preview-https
@@ -62,6 +63,7 @@ platform:
       tokenSecret: argocd-github-api
     environments:
       enabled: false
+      postgresBackend: azure
       registry: localacrk8s.azurecr.io
       # Each target reads deploy/environments/<name>/release.yaml from the delivery branch.
       targets: {}
