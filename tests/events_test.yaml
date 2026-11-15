@@ -1,0 +1,71 @@
+suite: Generic native event subscriptions
+values: []
+templates:
+  - events/subscriptions.yaml
+  - credentials/events.yaml
+set:
+  namespace: consumer-one
+  events:
+    sources:
+      changes:
+        resource:
+          updated:
+            namespace: watched-namespace
+            group: ""
+            version: v1
+            resource: configmaps
+            eventTypes: [ADD, UPDATE]
+    sensors:
+      notify:
+        dependencies:
+          - {name: change, eventSourceName: changes, eventName: updated}
+        triggers:
+          - template:
+              name: notify
+              http:
+                url: https://example.test/changed
+                method: POST
+                secureHeaders:
+                  - name: Authorization
+                    valueFrom:
+                      secretKeyRef: {name: dispatch, key: authorization}
+    githubTokens:
+      dispatch:
+        repository: example/consumer
+        permissions: {contents: write}
+  platform.events.github:
+    appId: '123'
+    installationId: '456'
+    privateKeyRemoteKey: existing-key
+
+tests:
+  - it: Preserves an unrelated native ConfigMap source and shared platform defaults
+    template: events/subscriptions.yaml
+    documentSelector: {path: kind, value: EventSource}
+    asserts:
+      - equal: {path: spec.resource.updated.namespace, value: watched-namespace}
+      - equal: {path: spec.resource.updated.resource, value: configmaps}
+      - equal: {path: spec.resource.updated.eventTypes, value: [ADD, UPDATE]}
+      - equal: {path: spec.eventBusName, value: platform}
+      - notExists: {path: spec.resource.readiness}
+
+  - it: Preserves the consumer HTTP destination without an agent or GitHub dispatch policy
+    template: events/subscriptions.yaml
+    documentSelector: {path: kind, value: Sensor}
+    asserts:
+      - equal: {path: "spec.triggers[0].template.http.url", value: 'https://example.test/changed'}
+      - notExists: {path: "spec.triggers[0].template.http.payload"}
+      - notExists: {path: "spec.triggers[0].template.k8s"}
+
+  - it: Limits the optional App token to the declared repository and permissions
+    template: credentials/events.yaml
+    documentSelector: {path: kind, value: GithubAccessToken}
+    asserts:
+      - equal: {path: spec.repositories, value: [consumer]}
+      - equal: {path: spec.permissions, value: {contents: write}}
+
+  - it: Uses one ServiceAccount for the consumer even with multiple sources and sensors
+    template: events/subscriptions.yaml
+    documentSelector: {path: kind, value: ServiceAccount}
+    asserts:
+      - matchRegex: {path: metadata.name, pattern: '^consumer-one-.*-[a-f0-9]{12}$'}

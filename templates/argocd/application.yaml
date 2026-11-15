@@ -23,14 +23,16 @@ spec:
         valueFiles: [{{ printf "$application/%s" $argo.valuesPath | quote }}]
         # The child renders workloads only, even if registration was enabled at bootstrap.
         valuesObject:
-          {{- if .Values.agentIntake.enabled }}
-          agentIntake:
-            {{- toYaml .Values.agentIntake | nindent 12 }}
+          {{- if or .Values.events.sources .Values.events.sensors .Values.events.githubTokens }}
+          events:
+            {{- toYaml .Values.events | nindent 12 }}
           {{- end }}
           platform:
-            {{- if .Values.agentIntake.enabled }}
-            agentIntake:
-              {{- toYaml .Values.platform.agentIntake | nindent 14 }}
+            {{- if or .Values.events.sources .Values.events.sensors .Values.events.githubTokens }}
+            events:
+              {{- toYaml .Values.platform.events | nindent 14 }}
+            credentials:
+              {{- toYaml .Values.platform.credentials | nindent 14 }}
             {{- end }}
             argocd: {enabled: false}
             lifecycle:

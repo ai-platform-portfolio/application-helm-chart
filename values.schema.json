@@ -31,44 +31,17 @@
     }
   },
   "properties": {
-    "agentIntake": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "enabled",
-        "repository",
-        "agent",
-        "target"
-      ],
+    "events": {
+      "type": "object", "additionalProperties": false,
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "repository": {
-          "type": "string",
-          "pattern": "^$|^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
-        },
-        "agent": {
-          "type": "string",
-          "pattern": "^$|^[a-z0-9][a-z0-9-]*$"
-        },
-        "target": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "namespace",
-            "workload"
-          ],
-          "properties": {
-            "namespace": {
-              "type": "string",
-              "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
-              "maxLength": 63
-            },
-            "workload": {
-              "type": "string",
-              "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
-              "maxLength": 63
+        "sources": {"type": "object", "additionalProperties": {"type": "object"}},
+        "sensors": {"type": "object", "additionalProperties": {"type": "object"}},
+        "githubTokens": {
+          "type": "object", "additionalProperties": {
+            "type": "object", "required": ["repository", "permissions"], "additionalProperties": false,
+            "properties": {
+              "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+              "permissions": {"type": "object", "minProperties": 1, "additionalProperties": {"enum": ["read", "write"]}}
             }
           }
         }

@@ -1,0 +1,91 @@
+{{- include "application.defaults" . -}}
+{{- $events := .Values.events -}}
+{{- $platform := .Values.platform.events -}}
+{{- $namespace := $platform.namespace -}}
+{{- $account := default (include "application.resourceName" (dict "root" . "name" "events")) $platform.serviceAccountName -}}
+{{- if or $events.sources $events.sensors }}
+{{- if not $platform.serviceAccountName }}
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: {{ $account }}, namespace: {{ $namespace }}}
+---
+{{- end }}
+{{- $defaults := dict "eventBusName" $platform.eventBus "template" (dict "serviceAccountName" $account "nodeSelector" $platform.nodeSelector "container" (dict "resources" $platform.resources)) -}}
+{{- range $key, $input := $events.sources }}
+{{- $name := include "application.resourceName" (dict "root" $ "name" (printf "source-%s" $key)) -}}
+{{- $spec := mergeOverwrite (deepCopy $defaults) (deepCopy $input) -}}
+{{- range $event, $webhook := default dict $spec.webhook -}}
+{{- $_ := required (printf "events.sources.%s.webhook.%s requires authSecret.name" $key $event) $webhook.authSecret.name -}}
+{{- $_ := required "webhook authSecret.key is required" $webhook.authSecret.key -}}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata: {name: {{ $name }}, namespace: {{ $namespace }}}
+spec:
+  {{- toYaml $spec | nindent 2 }}
+---
+{{- range $event, $watch := default dict $spec.resource }}
+{{- $target := required "Resource EventSources require an explicit namespace" $watch.namespace -}}
+{{- if $watch.watchCluster }}{{ fail "Cluster-wide resource watches require separately reviewed access" }}{{ end -}}
+{{- $watchName := include "application.resourceName" (dict "root" $ "name" (printf "watch-%s-%s" $key $event)) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: {{ $watchName }}, namespace: {{ $target }}}
+rules:
+  - apiGroups: [{{ default "" $watch.group | quote }}]
+    resources: [{{ required "Resource EventSource resource is required" $watch.resource | quote }}]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: {{ $watchName }}, namespace: {{ $target }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $watchName }}}
+subjects:
+  - {kind: ServiceAccount, name: {{ $spec.template.serviceAccountName }}, namespace: {{ $namespace }}}
+---
+{{- end }}
+{{- end }}
+{{- range $key, $input := $events.sensors }}
+{{- $name := include "application.resourceName" (dict "root" $ "name" (printf "sensor-%s" $key)) -}}
+{{- $spec := mergeOverwrite (deepCopy $defaults) (deepCopy $input) -}}
+{{- range $dependency := $spec.dependencies -}}
+{{- if hasKey $events.sources $dependency.eventSourceName -}}
+{{- $_ := set $dependency "eventSourceName" (include "application.resourceName" (dict "root" $ "name" (printf "source-%s" $dependency.eventSourceName))) -}}
+{{- end -}}
+{{- end -}}
+{{- $secrets := list -}}
+{{- range $trigger := $spec.triggers -}}
+{{- range $header := dig "template" "http" "secureHeaders" list $trigger -}}
+{{- $secret := $header.valueFrom.secretKeyRef -}}
+{{- if hasKey $events.githubTokens $secret.name -}}
+{{- $_ := set $secret "name" (include "application.resourceName" (dict "root" $ "name" (printf "token-%s" $secret.name))) -}}
+{{- end -}}
+{{- $secrets = append $secrets $secret.name -}}
+{{- end -}}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata: {name: {{ $name }}, namespace: {{ $namespace }}}
+spec:
+  {{- toYaml $spec | nindent 2 }}
+---
+{{- if $secrets }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: {{ $name }}, namespace: {{ $namespace }}}
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: {{ toJson (uniq $secrets) }}
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: {{ $name }}, namespace: {{ $namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $name }}}
+subjects:
+  - {kind: ServiceAccount, name: {{ $spec.template.serviceAccountName }}, namespace: {{ $namespace }}}
+---
+{{- end }}
+{{- end }}
+{{- end }}

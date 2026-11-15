@@ -973,55 +973,96 @@ Azure's existing default remains delete; previews must explicitly use disposable
 resources. Retention does not survive deleting the owning server/resource group.
 Full platform teardown remains disposable. CNPG's existing cleanup guard remains.
 
-## Foundry agent readiness-event intake
+## Native event subscriptions
 
-`agentIntake` is an optional event subscription, not an agent deployment. It
-reuses the installed Argo Events bus, dispatches readiness Event metadata to a
-consumer repository and leaves all agent/model execution in Foundry.
+Applications can consume the existing Argo Events installation directly through
+this chart. GitOps owns the controller and EventBus; no application registration
+or subscription-specific edit in GitOps is required. The chart does not create
+another controller, bus, gateway or certificate.
+
+`events.sources` and `events.sensors` are maps of native Argo EventSource and Sensor
+specifications. Map keys identify local resources; names are generated from the
+application namespace, Helm release and key. `platform.events` supplies the event
+namespace, existing bus, node placement and small resource defaults.
 
 ```yaml
-name: my-agent
-namespace: my-agent
+namespace: document-indexer
 
-agentIntake:
-  enabled: true
-  repository: example/agent-catalog
-  agent: investigator
-  target:
-    namespace: selected-investigation-namespace
-    workload: api
+events:
+  sources:
+    changes:
+      resource:
+        updated:
+          namespace: documents
+          group: ""
+          version: v1
+          resource: configmaps
+          eventTypes: [ADD, UPDATE]
+  sensors:
+    notify:
+      dependencies:
+        - name: changed
+          eventSourceName: changes
+          eventName: updated
+      triggers:
+        - template:
+            name: notify
+            http:
+              url: https://example.test/changed
+              method: POST
 ```
 
-The operator supplies `platform.agentIntake.github` (existing App ID,
-installation ID and Key Vault private-key secret name), and optionally
-`readerPrincipalId` from the deployed Foundry agent's **instance identity**.
-These are bootstrap metadata, not values developers repeat for each event.
-Argo registration propagates this metadata and the selected target into child
-reconciliation; child registration remains disabled.
+The example illustrates configuration only; it creates no live subscription.
+Filters, destinations, payloads, retry and rate limits are consumer policy. The
+renderer contains no agent, model, readiness or incident-specific behavior. Other
+native source/trigger kinds use the same interface, with any additional access
+supplied through the existing `platform.credentials` maps.
 
-Templates own stable namespace/release-derived names, namespace-scoped Event
-watch RBAC, separate source/sensor accounts, resources, native filters, HTTP
-retry and two-dispatches/minute rate limiting. Only the Event UID and fixed
-agent/namespace/workload metadata cross the dispatch boundary. Foundry's state
-store performs per-caller UID deduplication for 24 hours. Repeated event delivery
-may retry a failed handoff, but the publisher uses one deterministic incident
-branch and never overwrites a different proposal or reopens a closed PR.
+One ServiceAccount is shared by the consumer's EventSources and Sensors by default.
+Set `platform.events.serviceAccountName` to reuse an existing account instead.
+Resource sources get namespace-scoped get/list/watch permissions for their declared
+API group/resource. Empty namespace and cluster-wide resource watches are rejected.
+HTTP secure-header references get get-only access to their exact Secret names.
+The account has no general Secret access. Existing native credential Role and
+RoleBinding maps can supply separately reviewed external-reader or trigger access;
+no particular reader identity or Kubernetes workload policy is built into events.
 
-The existing GitHub App must permit contents write for repository_dispatch.
-ESO's native GitHub generator requires a PEM, so it copies the existing Key Vault
-App key; this is not a new key or a claim of keyless GitHub authentication. The
-sensor cannot read that key. It reads only its repository-scoped installation
-token, refreshed every 15 minutes and expiring after one hour. No certificate,
-gateway, new EventBus or Job is introduced.
+Sensor dependencies whose `eventSourceName` matches a local source key resolve to
+that source's generated name. Other source names are preserved. Event names and
+payload contents are unchanged. Native template settings can override defaults.
+Webhook sources must explicitly reference `authSecret`; anonymous webhook
+receivers are rejected. TLS/exposure and credential rotation remain the owner's
+responsibility, not a side effect of rendering a source.
 
-An optional native Kubernetes Role/RoleBinding grants the Foundry instance
-identity reads of workloads, Pods/logs and Events in the selected namespace. It
-never grants Secrets access or mutation. This targets Entra-integrated Kubernetes
-RBAC; Azure RBAC authorization needs the corresponding Azure-owned assignment.
-Network reachability is a separate acceptance gate. Rendering RBAC does not open
-an AKS API firewall or prove a Foundry connection works.
+### Optional GitHub HTTP trigger credentials
 
-Removing the Argo application with its finalizer removes these owned resources;
-the shared EventBus, shared operators, source workload and Key Vault key remain.
-Stop this subscription before retiring the Foundry agent. Drain/cancel incident
-workflows before deleting agent versions or their referenced knowledge stores.
+For GitHub API triggers, the chart can deliver short-lived, repository-scoped App
+tokens without a handwritten generator or Secret manifest:
+
+```yaml
+events:
+  githubTokens:
+    dispatch:
+      repository: example/consumer
+      permissions: {contents: write}
+```
+
+A Sensor HTTP secure header can reference the logical token key:
+`secretKeyRef: {name: dispatch, key: authorization}`. The chart resolves that name
+to the generated Secret. Destinations and payloads remain native Sensor fields;
+creating a token does not select a GitHub operation or start a workflow.
+
+The operator supplies existing App metadata through `platform.events.github`
+(`appId`, `installationId`, `privateKeyRemoteKey`). ESO's native generator requires
+an App PEM, so the chart reuses the existing Key Vault key; this is not keyless
+GitHub authentication or automatic key rotation. Only ESO reads that key. The
+shared event account can read the selected short-lived HTTP token, not the PEM.
+Tokens refresh every 15 minutes and expire after one hour. Permissions must be
+explicit and the existing App installation must cover the declared repository.
+
+Bootstrap renders only `templates/argocd/application.yaml` to register the
+consumer. Event/platform inputs and credential overrides carry into child
+reconciliation; the child cannot register itself. Argo finalizer cleanup removes
+owned subscription resources and generated credentials, preserving the existing
+platform controller/bus, source workloads and Vault key. Stop subscriptions before
+retiring their destination and handle in-flight deliveries in the consumer.
