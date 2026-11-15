@@ -972,3 +972,97 @@ reattachment. Federated credentials and data-access grants are still removed.
 Azure's existing default remains delete; previews must explicitly use disposable
 resources. Retention does not survive deleting the owning server/resource group.
 Full platform teardown remains disposable. CNPG's existing cleanup guard remains.
+
+## Native event subscriptions
+
+Applications can consume the existing Argo Events installation directly through
+this chart. GitOps owns the controller and EventBus; no application registration
+or subscription-specific edit in GitOps is required. The chart does not create
+another controller, bus, gateway or certificate.
+
+`events.sources` and `events.sensors` are maps of native Argo EventSource and Sensor
+specifications. Map keys identify local resources; names are generated from the
+application namespace, Helm release and key. `platform.events` supplies the event
+namespace, existing bus, node placement and small resource defaults.
+
+```yaml
+namespace: document-indexer
+
+events:
+  sources:
+    changes:
+      resource:
+        updated:
+          namespace: documents
+          group: ""
+          version: v1
+          resource: configmaps
+          eventTypes: [ADD, UPDATE]
+  sensors:
+    notify:
+      dependencies:
+        - name: changed
+          eventSourceName: changes
+          eventName: updated
+      triggers:
+        - template:
+            name: notify
+            http:
+              url: https://example.test/changed
+              method: POST
+```
+
+The example illustrates configuration only; it creates no live subscription.
+Filters, destinations, payloads, retry and rate limits are consumer policy. The
+renderer contains no agent, model, readiness or incident-specific behavior. Other
+native source/trigger kinds use the same interface, with any additional access
+supplied through the existing `platform.credentials` maps.
+
+One ServiceAccount is shared by the consumer's EventSources and Sensors by default.
+Set `platform.events.serviceAccountName` to reuse an existing account instead.
+Resource sources get namespace-scoped get/list/watch permissions for their declared
+API group/resource. Empty namespace and cluster-wide resource watches are rejected.
+HTTP secure-header references get get-only access to their exact Secret names.
+The account has no general Secret access. Existing native credential Role and
+RoleBinding maps can supply separately reviewed external-reader or trigger access;
+no particular reader identity or Kubernetes workload policy is built into events.
+
+Sensor dependencies whose `eventSourceName` matches a local source key resolve to
+that source's generated name. Other source names are preserved. Event names and
+payload contents are unchanged. Native template settings can override defaults.
+Webhook sources must explicitly reference `authSecret`; anonymous webhook
+receivers are rejected. TLS/exposure and credential rotation remain the owner's
+responsibility, not a side effect of rendering a source.
+
+### Optional GitHub HTTP trigger credentials
+
+For GitHub API triggers, the chart can deliver short-lived, repository-scoped App
+tokens without a handwritten generator or Secret manifest:
+
+```yaml
+events:
+  githubTokens:
+    dispatch:
+      repository: example/consumer
+      permissions: {contents: write}
+```
+
+A Sensor HTTP secure header can reference the logical token key:
+`secretKeyRef: {name: dispatch, key: authorization}`. The chart resolves that name
+to the generated Secret. Destinations and payloads remain native Sensor fields;
+creating a token does not select a GitHub operation or start a workflow.
+
+The operator supplies existing App metadata through `platform.events.github`
+(`appId`, `installationId`, `privateKeyRemoteKey`). ESO's native generator requires
+an App PEM, so the chart reuses the existing Key Vault key; this is not keyless
+GitHub authentication or automatic key rotation. Only ESO reads that key. The
+shared event account can read the selected short-lived HTTP token, not the PEM.
+Tokens refresh every 15 minutes and expire after one hour. Permissions must be
+explicit and the existing App installation must cover the declared repository.
+
+Bootstrap renders only `templates/argocd/application.yaml` to register the
+consumer. Event/platform inputs and credential overrides carry into child
+reconciliation; the child cannot register itself. Argo finalizer cleanup removes
+owned subscription resources and generated credentials, preserving the existing
+platform controller/bus, source workloads and Vault key. Stop subscriptions before
+retiring their destination and handle in-flight deliveries in the consumer.

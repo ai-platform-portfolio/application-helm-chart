@@ -9,6 +9,13 @@ namespace: ""
 hosts: {}
 components: {}
 
+# Native Argo specifications; empty maps create no event resources.
+events:
+  sources: {}
+  sensors: {}
+  # Optional repository-scoped, short-lived GitHub tokens for HTTP triggers.
+  githubTokens: {}
+
 # Platform environment inputs; empty maps render no database resources.
 postgres:
   databases: {}
@@ -18,6 +25,18 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  events:
+    namespace: cluster-onboarding
+    eventBus: platform
+    # Empty creates one shared account; set a name to reuse an existing account.
+    serviceAccountName: ""
+    secretStore: azure-kv
+    nodeSelector: {agentpool: platform}
+    resources:
+      requests: {cpu: 10m, memory: 64Mi}
+      limits: {memory: 256Mi}
+    github: {appId: "", installationId: "", privateKeyRemoteKey: ""}
+
   models: {}
   telemetryEndpoint: ""
   tests:
