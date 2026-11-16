@@ -43,3 +43,10 @@ app.kubernetes.io/managed-by: {{ .root.Release.Service | quote }}
 metadata:
   {{- toYaml $metadata | nindent 2 }}
 {{- end -}}
+
+{{/* Keep generated role identity consistent between creation and cleanup. */}}
+{{- define "application.roleAssignmentHash" -}}
+{{- $input := printf "%s/%s/%s" .scope .identity.azureName (default .assignment.roleName .assignment.roleDefinitionId) -}}
+{{- if .assignment.generated }}{{- $input = lower $input }}{{- end -}}
+{{- sha256sum $input | trunc 32 -}}
+{{- end -}}

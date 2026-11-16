@@ -189,5 +189,11 @@ class RenderingTests(unittest.TestCase):
             self.assertEqual(pod['serviceAccountName'], 'litellm-key-writer')
             self.assertEqual(pod['initContainers'][0]['name'], 'revoke-keys')
             self.assertEqual(pod['containers'][0]['command'], ['kubectl'])
+            retained = {item['metadata']['name'] for item in items if item['kind'] == 'RoleAssignment'
+                        and item['metadata'].get('annotations', {}).get('argocd.argoproj.io/sync-options') == 'Prune=false,Delete=false'}
+            permission = next(item for item in items if item['kind'] == 'Role' and item['metadata']['name'].endswith('-revoke'))
+            self.assertEqual(set(permission['rules'][0]['resourceNames']), retained)
+            deleted = {arg for arg in pod['containers'][0]['args'] if arg in retained}
+            self.assertEqual(deleted, retained)
         self.assertEqual(len(set(manager_names)), 3)
         self.assertEqual(len(set(owners)), 3)
