@@ -81,9 +81,7 @@ spec:
 {{- if not $scope }}
 {{- $scope = include "application.azureScope" (dict "root" $ "target" $assignment.scope) }}
 {{- end }}
-{{- $hashInput := printf "%s/%s/%s" $scope $identity.azureName (default $assignment.roleName $assignment.roleDefinitionId) }}
-{{- if $assignment.generated }}{{- $hashInput = lower $hashInput }}{{- end }}
-{{- $hash := sha256sum $hashInput | trunc 32 }}
+{{- $hash := include "application.roleAssignmentHash" (dict "scope" $scope "identity" $identity "assignment" $assignment) }}
 {{- $key := $name }}
 {{- if $assignment.generated }}{{- $key = printf "%s-%s" $name ($hash | trunc 12) }}{{- end }}
 apiVersion: authorization.azure.com/v1api20220401
