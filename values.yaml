@@ -25,6 +25,17 @@ postgres:
 
 # Platform defaults. Applications can override replicas or resources when needed.
 platform:
+  modelGateway:
+    endpoint: ""
+    vaultUri: ""
+    masterSecret: ""
+    consumerIdentity: ""
+    namespace: litellm
+    issuerServiceAccount: litellm-key-writer
+    issuerIdentitySecret: litellm-key-writer
+    image: ghcr.io/berriai/litellm:v1.109.1@sha256:11175975a3093e05e92faee2fe2fe3412a3ae2fcaa849eb0fe25d5f0d8bcb2e9
+    policies: {}
+
   events:
     namespace: cluster-onboarding
     eventBus: platform

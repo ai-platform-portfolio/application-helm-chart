@@ -91,9 +91,14 @@ kind: RoleAssignment
 metadata:
   name: {{ include "application.resourceName" (dict "root" $ "name" $key) }}
   namespace: {{ $.Values.platform.azure.resourceNamespace | quote }}
-  {{- if hasKey $.Values.platform.syncWaves "roleAssignment" }}
+  {{- if or (hasKey $.Values.platform.syncWaves "roleAssignment") $assignment.retainUntilGatewayRevocation }}
   annotations:
+    {{- if hasKey $.Values.platform.syncWaves "roleAssignment" }}
     argocd.argoproj.io/sync-wave: {{ index $.Values.platform.syncWaves "roleAssignment" | quote }}
+    {{- end }}
+    {{- if $assignment.retainUntilGatewayRevocation }}
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    {{- end }}
   {{- end }}
 spec:
   azureName: {{ printf "%s-%s-%s-%s-%s" (substr 0 8 $hash) (substr 8 12 $hash) (substr 12 16 $hash) (substr 16 20 $hash) (substr 20 32 $hash) | quote }}
