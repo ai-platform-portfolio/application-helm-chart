@@ -2,6 +2,12 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "definitions": {
+    "gatewayAccess": {
+      "type": "object", "additionalProperties": false, "required": ["policy"],
+      "properties": {
+        "policy": {"type": "string", "minLength": 1}
+      }
+    },
     "credentialMetadata": {
       "type": "object",
       "additionalProperties": false,
@@ -77,6 +83,7 @@
     "platform": {
       "type": "object",
       "properties": {
+        "modelGateway": {"type": "object"},
         "tests": {
           "type": "object", "additionalProperties": false,
           "properties": {
@@ -535,6 +542,7 @@
           "database": {"type": "string", "minLength": 1},
           "storage": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
           "model": {"type": "string", "minLength": 1},
+          "gatewayAccess": {"$ref": "#/definitions/gatewayAccess"},
           "databaseEnv": {"type": "string", "minLength": 1},
           "env": {
             "type": "array",

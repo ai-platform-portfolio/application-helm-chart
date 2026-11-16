@@ -1066,3 +1066,24 @@ reconciliation; the child cannot register itself. Argo finalizer cleanup removes
 owned subscription resources and generated credentials, preserving the existing
 platform controller/bus, source workloads and Vault key. Stop subscriptions before
 retiring their destination and handle in-flight deliveries in the consumer.
+
+## Model gateway access
+
+A component declares only `gatewayAccess: {policy: documents}` instead of direct
+`model` intent. The platform supplies the policy, approved HTTPS endpoint, vault
+metadata and repository identity. Templates reuse that component's dedicated
+identity, deliver a versionless secret reference and create only secret-scoped
+Key Vault reader access, with no generated direct-provider grant.
+
+Trusted initial/renewal/revocation Jobs use the existing platform gateway issuer
+ServiceAccount; applications cannot supply its commands or keys. Keys expire after
+48 hours and renew daily; a stable non-admin owner retains accounting across key
+rotation. Explicit positive spend/rate ceilings are required before issuance.
+Redis serializes retries; the issuer-only vault record preserves key generations.
+Missing previously established accounting blocks reissuance instead of creating
+a fresh allowance. This does not restore accounting after a database rebuild.
+
+Delete the consumer release to revoke its keys before removing retained reader
+grants. Removing gateway intent from a live release without deleting that release
+is not a supported revocation operation. Provider permission enforcement and live
+acceptance are separate platform gates.

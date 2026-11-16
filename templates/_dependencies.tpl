@@ -3,7 +3,7 @@
 {{- $azure := .Values.platform.azure -}}
 {{- $used := not (empty .Values.storage) -}}
 {{- range $name, $component := .Values.components -}}
-{{- if or $component.storage $component.model -}}{{- $used = true -}}{{- end -}}
+{{- if or $component.storage $component.model $component.gatewayAccess -}}{{- $used = true -}}{{- end -}}
 {{- end -}}
 {{- if and $used (or $azure.roleAssignments $azure.identities $azure.storageContainers) -}}
 {{- fail "Dependency intent cannot be combined with advanced Azure access maps" -}}
@@ -17,7 +17,7 @@
 {{- $_ := set $azure.storageContainers $key (dict "azureName" $base "reclaimPolicy" (default "retain" $request.reclaimPolicy)) -}}
 {{- end -}}
 {{- range $name, $component := .Values.components -}}
-{{- if or $component.storage $component.model -}}
+{{- if or $component.storage $component.model $component.gatewayAccess -}}
 {{- $used = true -}}
 {{- $identity := printf "%s-runtime" $name -}}
 {{- if and $component.database (eq $.Values.platform.postgres.backend "azure") -}}
@@ -30,6 +30,23 @@
 {{- $_ := set $azure.identities $identity (dict "azureName" (printf "id-%s" $base) "reflectToApplication" true) -}}
 {{- end -}}
 {{- $env := dict "APPLICATION_REVISION" (default "local" $.Chart.AppVersion) -}}
+{{- if $component.gatewayAccess -}}
+{{- if $component.model -}}{{- fail "Select direct model intent or gatewayAccess, never both" -}}{{- end -}}
+{{- $gateway := $.Values.platform.modelGateway -}}
+{{- $policy := required "Gateway policy is not configured" (index $gateway.policies $component.gatewayAccess.policy) -}}
+{{- $accessName := include "application.resourceName" (dict "root" $ "name" (printf "gateway-%s" $name)) -}}
+{{- $_ := set $env "MODEL_CONNECTION_MODE" "gateway" -}}
+{{- $_ := set $env "MODEL_AUTH_METHOD" "api_key" -}}
+{{- $_ := set $env "MODEL_BASE_URL" (required "platform.modelGateway.endpoint is required" $gateway.endpoint) -}}
+{{- range $capability, $intent := $policy.capabilities -}}
+{{- $prefix := "" -}}{{- if ne $capability "default" -}}{{- $prefix = printf "%s_" (upper $capability) -}}{{- end -}}
+{{- $secretName := printf "%s-%s" $accessName $capability -}}
+{{- $_ := set $env (printf "%sMODEL_DEPLOYMENT_NAME" $prefix) $intent.model -}}
+{{- $_ := set $env (printf "%sMODEL_API_KEY_SECRET_URI" $prefix) (printf "%s/secrets/%s" (trimSuffix "/" $gateway.vaultUri) $secretName) -}}
+{{- $vault := include "application.azureScope" (dict "root" $ "target" "keyVault") -}}
+{{- $_ := set $azure.roleAssignments (printf "%s-gateway-%s" $identity $capability) (dict "generated" true "identity" $identity "roleName" "Key Vault Secrets User" "armScope" (printf "%s/secrets/%s" $vault $secretName) "retainUntilGatewayRevocation" true) -}}
+{{- end -}}
+{{- end -}}
 {{- if $component.storage -}}
 {{- if not (hasKey $.Values.storage $component.storage) -}}{{- fail (printf "component %s references undefined storage %s" $name $component.storage) -}}{{- end -}}
 {{- $container := index $azure.storageContainers $component.storage -}}
