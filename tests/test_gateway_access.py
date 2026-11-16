@@ -119,6 +119,22 @@ class GatewayTests(unittest.TestCase):
 
 
 class RenderingTests(unittest.TestCase):
+    def test_publication_lint_without_environment_metadata(self):
+        intent = {'name': 'example', 'components': {'worker': {
+            'image': 'example/image@sha256:' + 'a' * 64,
+            'command': ['python'], 'gatewayAccess': {'policy': 'documents'}}}}
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as source:
+            json.dump(intent, source)
+            source.flush()
+            result = subprocess.run(['helm', 'lint', str(Path(__file__).parents[1]), '-f', source.name],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            # Actual deployment must still reject missing trusted policy metadata.
+            result = subprocess.run(['helm', 'template', 'example', str(Path(__file__).parents[1]), '-f', source.name],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Gateway policy is not configured', result.stderr)
+
     def render(self, namespace, consumer='org/repo'):
         policy = {'maxBudget': 1, 'budgetDuration': '30d', 'rpm': 10, 'tpm': 1000, 'parallel': 2,
                   'capabilities': {'default': {'model': 'reasoning', 'routes': ['/v1/chat/completions'],

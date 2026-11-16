@@ -33,7 +33,7 @@
 {{- if $component.gatewayAccess -}}
 {{- if $component.model -}}{{- fail "Select direct model intent or gatewayAccess, never both" -}}{{- end -}}
 {{- $gateway := $.Values.platform.modelGateway -}}
-{{- $policy := required "Gateway policy is not configured" (index $gateway.policies $component.gatewayAccess.policy) -}}
+{{- $policy := default dict (required "Gateway policy is not configured" (index $gateway.policies $component.gatewayAccess.policy)) -}}
 {{- $accessName := include "application.resourceName" (dict "root" $ "name" (printf "gateway-%s" $name)) -}}
 {{- $_ := set $env "MODEL_CONNECTION_MODE" "gateway" -}}
 {{- $_ := set $env "MODEL_AUTH_METHOD" "api_key" -}}
