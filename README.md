@@ -1087,3 +1087,27 @@ Delete the consumer release to revoke its keys before removing retained reader
 grants. Removing gateway intent from a live release without deleting that release
 is not a supported revocation operation. Provider permission enforcement and live
 acceptance are separate platform gates.
+
+## Native hosted gateway consumers
+
+A hosted consumer declares only `gatewayAccess: {policy: bounded-agent}` at the
+root. Trusted delivery supplies `platform.modelGateway.principalId` from native
+Foundry readback plus platform metadata; the chart never creates a replacement
+identity, federation, namespace or fake workload. Hosted intent cannot be combined
+with component or Azure identity maps. The same template serves other repositories
+and PR identities unchanged.
+
+The chart creates capability-scoped finite keys using the existing issuer, exact
+secret-reader grants for that principal, public `connection.json`, daily renewal
+and ordered revocation. For three capabilities the credential render contains nine
+objects including hooks; the separately rendered Argo registration makes ten.
+Registration forwards trusted metadata and disables child self-registration.
+Versionless secret references and capability models are chart-derived, not copied
+into application infrastructure. Missing policy ceilings block key issuance.
+
+The public connection render can precede initial deployment; applying credentials
+requires the actual native principal. Deployment reads that principal before
+registering the credential Application and evaluates only after reconciliation.
+Deleting the Application revokes keys before deleting reader grants; it preserves
+stable accounting/control records. Replacing a native principal requires reviewed
+cleanup of its old access, rather than silently retaining another reader.

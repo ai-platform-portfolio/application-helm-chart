@@ -135,7 +135,7 @@ class RenderingTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Gateway policy is not configured', result.stderr)
 
-    def render(self, namespace, consumer='org/repo'):
+    def render(self, namespace, consumer='org/repo', hosted=False, registration=False, connection_only=False):
         policy = {'maxBudget': 1, 'budgetDuration': '30d', 'rpm': 10, 'tpm': 1000, 'parallel': 2,
                   'capabilities': {'default': {'model': 'reasoning', 'routes': ['/v1/chat/completions'],
                                               'rpm': 10, 'tpm': 1000, 'parallel': 2}}}
@@ -149,6 +149,20 @@ class RenderingTests(unittest.TestCase):
                                'modelGateway': {'consumerIdentity': consumer, 'endpoint': 'https://models.internal.example/v1',
                                                 'vaultUri': 'https://example.vault.azure.net', 'masterSecret': 'platform-master',
                                                 'policies': {'documents': policy}}}}
+        if hosted:
+            values['components'] = {}
+            values['gatewayAccess'] = {'policy': 'documents'}
+            for capability in ('coding', 'embedding'):
+                policy['capabilities'][capability] = {**policy['capabilities']['default'], 'model': capability}
+            policy['capabilities']['embedding']['version'] = '1'
+            values['platform']['modelGateway']['principalId'] = '00000000-0000-0000-0000-000000000003'
+        if connection_only:
+            values['platform']['modelGateway']['connectionOnly'] = True
+            values['platform']['modelGateway']['principalId'] = ''
+        if registration:
+            values['platform']['argocd'] = {'enabled': True, 'repository': 'https://github.com/org/repo.git',
+                                           'revision': 'a'*40, 'chartRevision': 'b'*40}
+            values['platform']['lifecycle'] = {'cleanup': {'enabled': True}}
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as source:
             json.dump(values, source)
             source.flush()
@@ -197,3 +211,39 @@ class RenderingTests(unittest.TestCase):
             self.assertEqual(deleted, retained)
         self.assertEqual(len(set(manager_names)), 3)
         self.assertEqual(len(set(owners)), 3)
+
+    def test_hosted_consumer_reuses_native_principal_and_exact_cleanup(self):
+        names = []
+        for namespace, repo in [('repo-pr-1', 'org/repo'), ('repo-pr-2', 'org/repo'), ('other-pr-1', 'org/other')]:
+            items = self.render(namespace, repo, hosted=True)
+            self.assertEqual(len(items), 9)  # three capabilities; registration is a separate render
+            self.assertFalse({'Deployment', 'Namespace', 'UserAssignedIdentity', 'FederatedIdentityCredential', 'ServiceAccount'} & {i['kind'] for i in items})
+            reader = next(i for i in items if i['kind'] == 'RoleAssignment')
+            self.assertEqual(reader['spec']['principalId'], '00000000-0000-0000-0000-000000000003')
+            self.assertIn('/secrets/', reader['spec']['owner']['armId'])
+            role = next(i for i in items if i['kind'] == 'Role')
+            self.assertEqual(set(role['rules'][0]['resourceNames']), {i['metadata']['name'] for i in items if i['kind'] == 'RoleAssignment'})
+            revoke = next(i for i in items if i['kind'] == 'Job' and i['metadata']['name'].endswith('-revoke'))
+            self.assertIn(reader['metadata']['name'], revoke['spec']['template']['spec']['containers'][0]['args'])
+            metadata = next(i for i in items if i['kind'] == 'ConfigMap')
+            connection = json.loads(metadata['data']['connection.json'])
+            self.assertEqual(connection['MODEL_AUTH_METHOD'], 'api_key')
+            self.assertNotIn('MODEL_API_KEY', connection)
+            names.append(connection['MODEL_API_KEY_SECRET_URI'])
+        self.assertEqual(len(set(names)), 3)
+
+    def test_hosted_registration_forwards_trusted_metadata_without_self_registration(self):
+        items = self.render('repo-pr-1', hosted=True, registration=True)
+        self.assertEqual(len(items), 10)
+        parent = next(i for i in items if i['kind'] == 'Application')
+        forwarded = parent['spec']['sources'][0]['helm']['valuesObject']
+        self.assertFalse(forwarded['platform']['argocd']['enabled'])
+        self.assertEqual(forwarded['platform']['modelGateway']['principalId'], '00000000-0000-0000-0000-000000000003')
+        self.assertEqual(forwarded['namespace'], 'repo-pr-1')
+        self.assertIn('resources-finalizer.argocd.argoproj.io', parent['metadata']['finalizers'])
+        self.assertEqual(parent['spec']['syncPolicy']['automated'], {'prune': True, 'selfHeal': True})
+
+    def test_initial_connection_render_needs_no_principal_and_creates_no_credential_resources(self):
+        items = self.render('fresh-consumer', hosted=True, connection_only=True)
+        self.assertEqual([i['kind'] for i in items], ['ConfigMap'])
+        self.assertIn('EMBEDDING_MODEL_API_KEY_SECRET_URI', json.loads(items[0]['data']['connection.json']))

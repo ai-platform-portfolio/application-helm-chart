@@ -37,6 +37,7 @@
     }
   },
   "properties": {
+    "gatewayAccess": {"anyOf": [{"type": "object", "maxProperties": 0}, {"$ref": "#/definitions/gatewayAccess"}]},
     "events": {
       "type": "object", "additionalProperties": false,
       "properties": {

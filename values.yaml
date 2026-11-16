@@ -4,6 +4,9 @@ hostname: ""
 databases: {}
 storage: {}
 
+# Hosted consumers use their native principal supplied by trusted delivery.
+gatewayAccess: {}
+
 # Application values normally set only namespace, hosts and components.
 namespace: ""
 hosts: {}
@@ -30,6 +33,8 @@ platform:
     vaultUri: ""
     masterSecret: ""
     consumerIdentity: ""
+    principalId: ""
+    connectionOnly: false # Trusted delivery may render public metadata before native identity exists.
     namespace: litellm
     issuerServiceAccount: litellm-key-writer
     issuerIdentitySecret: litellm-key-writer

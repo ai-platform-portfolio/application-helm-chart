@@ -6,6 +6,8 @@ kind: Application
 metadata:
   name: {{ required "name is required for Argo registration" .Values.name | quote }}
   namespace: {{ $argo.namespace | quote }}
+  labels:
+    platform.ai-platform-portfolio/registration: "true"
   {{- if .Values.platform.lifecycle.cleanup.enabled }}
   finalizers: [resources-finalizer.argocd.argoproj.io]
   {{- end }}
@@ -23,11 +25,19 @@ spec:
         valueFiles: [{{ printf "$application/%s" $argo.valuesPath | quote }}]
         # The child renders workloads only, even if registration was enabled at bootstrap.
         valuesObject:
+          {{- if $.Values.gatewayAccess }}
+          name: {{ $.Values.name | quote }}
+          namespace: {{ $.Values.namespace | quote }}
+          {{- end }}
           {{- if or .Values.events.sources .Values.events.sensors .Values.events.githubTokens }}
           events:
             {{- toYaml .Values.events | nindent 12 }}
           {{- end }}
           platform:
+            {{- if $.Values.gatewayAccess }}
+            modelGateway: {{ toJson $.Values.platform.modelGateway }}
+            azure: {{ toJson $.Values.platform.azure }}
+            {{- end }}
             {{- if or .Values.events.sources .Values.events.sensors .Values.events.githubTokens }}
             events:
               {{- toYaml .Values.platform.events | nindent 14 }}
@@ -45,6 +55,9 @@ spec:
     {{- include "application.rolloutDiff" .Values.namespace | nindent 4 }}
   # Cleanup is opt-in. PostDelete must succeed before deletion completes.
   syncPolicy:
+    {{- if .Values.gatewayAccess }}
+    automated: {prune: true, selfHeal: true}
+    {{- end }}
     retry:
       limit: 3
       backoff: {duration: 10s, factor: 2, maxDuration: 1m}
