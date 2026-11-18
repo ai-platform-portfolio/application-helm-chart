@@ -212,6 +212,23 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(len(set(manager_names)), 3)
         self.assertEqual(len(set(owners)), 3)
 
+    def test_long_consumer_renewal_names_are_valid_stable_and_isolated(self):
+        identities = [('a' * 50 + '-pr-1', 'org/repo'),
+                      ('a' * 50 + '-pr-2', 'org/repo'),
+                      ('a' * 49 + 'b-pr-1', 'org/other')]
+        for hosted in (False, True):
+            names = []
+            for namespace, repo in identities:
+                with self.subTest(namespace=namespace, hosted=hosted):
+                    items = self.render(namespace, repo, hosted=hosted)
+                    name = next(i['metadata']['name'] for i in items if i['kind'] == 'CronJob')
+                    self.assertLessEqual(len(name), 52)
+                    self.assertRegex(name, r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+                    repeated = self.render(namespace, repo, hosted=hosted)
+                    self.assertEqual(name, next(i['metadata']['name'] for i in repeated if i['kind'] == 'CronJob'))
+                    names.append(name)
+            self.assertEqual(len(set(names)), len(identities))
+
     def test_hosted_consumer_reuses_native_principal_and_exact_cleanup(self):
         names = []
         for namespace, repo in [('repo-pr-1', 'org/repo'), ('repo-pr-2', 'org/repo'), ('other-pr-1', 'org/other')]:
