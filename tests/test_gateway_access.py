@@ -102,6 +102,15 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gateway.Manager(changed, self.api, self.vault, lambda: self.now).reconcile()
 
+    def test_lost_accounting_has_specific_safe_error_without_new_allowance(self):
+        self.manager.reconcile()
+        self.users.clear()
+        self.calls.clear()
+        with self.assertRaises(gateway.AccountingRestoreRequired):
+            self.manager.reconcile()
+        self.assertFalse(any(method == 'POST' for method, _, _ in self.calls))
+        self.assertTrue(json.loads(self.secrets['consumer-one-control'][0])['created'])
+
     def test_revoke_removes_keys_disables_secret_but_preserves_accounting(self):
         self.manager.reconcile()
         self.users[self.manager.owner]['spend'] = 0.4
