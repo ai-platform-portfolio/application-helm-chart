@@ -12,6 +12,10 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 
+class AccountingRestoreRequired(ValueError):
+    """Safe operational code; never include a credential-bearing API response."""
+
+
 ROUTES = {'/v1/responses', '/v1/chat/completions', '/v1/embeddings'}
 
 
@@ -71,7 +75,7 @@ class Manager:
                   'max_parallel_requests': policy['parallel']}
         if info is None:
             if record['created']:
-                raise ValueError('Previously provisioned accounting owner is missing; restore required')
+                raise AccountingRestoreRequired('Previously provisioned accounting owner is missing; restore required')
             self.api('POST', '/user/new', json={**fields, 'auto_create_key': False,
                      'user_role': 'internal_user', 'budget_duration': policy['budgetDuration'],
                      'metadata': {'gateway_owner': self.owner}})
@@ -214,5 +218,6 @@ if __name__ == '__main__':
         main()
     except Exception as error:
         # API exceptions may contain key material. Never print messages/tracebacks.
-        print('Gateway credential operation failed: ' + type(error).__name__, file=sys.stderr)
+        code = 'ACCOUNTING_RESTORE_REQUIRED' if isinstance(error, AccountingRestoreRequired) else type(error).__name__
+        print('Gateway credential operation failed: ' + code, file=sys.stderr)
         sys.exit(1)
