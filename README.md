@@ -805,6 +805,25 @@ platform:
               remoteRef: {key: app-database-url}
 ```
 
+A workload owner can opt into `platform.credentials.workloadReaders` to grant
+an external Entra service principal a named Deployment read and namespace-wide
+Pod and Event lists. The grant follows the application namespace and release
+lifecycle. It grants no Pod logs, Secrets access, or writes.
+
+```yaml
+platform:
+  credentials:
+    workloadReaders:
+      investigator:
+        principalId: 00000000-0000-1111-2222-333333333333
+        deployment: api
+```
+
+Supply the current Entra object ID from the consumer deployment record, such as
+Foundry's `instance_principal_id`. The target workload owner controls the grant.
+Verify the principal's Kubernetes username and namespace authorization on the
+target cluster before relying on it.
+
 The platform caller owns trusted credential policy and name references; application
 pods receive only the selected Secret keys. No application names or provider
 settings are embedded in these templates. Reader service accounts default to no
