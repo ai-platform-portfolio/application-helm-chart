@@ -79,7 +79,24 @@
 {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- if $used -}}
+{{- $workloadPrincipals := dict -}}
+{{- range $reader, $principal := $azure.workloadReaders -}}
+{{- $cluster := required "platform.azure.aksArmId is required for workload readers" $azure.aksArmId -}}
+{{- if not (regexMatch "^/subscriptions/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/resourcegroups/[a-z0-9_.()-]+/providers/microsoft.containerservice/managedclusters/[a-z0-9_-]+$" (lower $cluster)) -}}
+{{- fail "platform.azure.aksArmId must be an AKS cluster ARM ID" -}}
+{{- end -}}
+{{- $namespace := required "namespace is required for workload readers" $.Values.namespace -}}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" $namespace) -}}
+{{- fail "workload reader scope requires a valid Kubernetes namespace" -}}
+{{- end -}}
+{{- if hasKey $workloadPrincipals (lower $principal) -}}{{- fail "Duplicate workload reader principal" -}}{{- end -}}
+{{- $_ := set $workloadPrincipals (lower $principal) true -}}
+{{- $scope := printf "%s/namespaces/%s" $cluster $namespace -}}
+{{- $name := printf "workload-reader-%s" $reader -}}
+{{- if hasKey $azure.roleAssignments $name -}}{{- fail (printf "Duplicate Azure role assignment %s" $name) -}}{{- end -}}
+{{- $_ := set $azure.roleAssignments $name (dict "generated" true "principalId" $principal "armScope" $scope "roleName" "Azure Kubernetes Service RBAC Reader") -}}
+{{- end -}}
+{{- if or $used $azure.workloadReaders -}}
 {{- $waves := dict "namespace" -40 "userAssignedIdentity" -35 "federatedIdentityCredential" -30 "storageContainer" -29 "roleAssignment" -25 "serviceAccount" -20 "deployment" 10 "service" 10 -}}
 {{- $_ := set .Values.platform "syncWaves" (mergeOverwrite $waves .Values.platform.syncWaves) -}}
 {{- end -}}

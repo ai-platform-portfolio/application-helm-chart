@@ -384,3 +384,25 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: assign its roles once in platform GitOps
+
+  - it: scopes an external workload reader to the release namespace
+    set:
+      namespace: preview-reader
+      platform.azure.aksArmId: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.ContainerService/managedClusters/aks-example
+      platform.azure.workloadReaders.investigator: 00000000-0000-1111-2222-333333333333
+    documentSelector: {path: kind, value: RoleAssignment}
+    asserts:
+      - equal: {path: metadata.namespace, value: azure-resources}
+      - equal:
+          path: spec.owner.armId
+          value: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.ContainerService/managedClusters/aks-example/namespaces/preview-reader
+      - equal: {path: spec.principalId, value: 00000000-0000-1111-2222-333333333333}
+      - equal: {path: spec.roleDefinitionReference.wellKnownName, value: Azure Kubernetes Service RBAC Reader}
+      - notExists: {path: spec.principalIdFromConfig}
+
+  - it: rejects workload readers without an AKS cluster scope
+    set:
+      namespace: preview-reader
+      platform.azure.workloadReaders.investigator: 00000000-0000-1111-2222-333333333333
+    asserts:
+      - failedTemplate: {errorPattern: platform.azure.aksArmId is required}

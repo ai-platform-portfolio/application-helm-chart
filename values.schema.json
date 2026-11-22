@@ -229,17 +229,6 @@
                 }
               }
             },
-            "workloadReaders": {
-              "type": "object",
-              "propertyNames": {"pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"},
-              "additionalProperties": {
-                "type": "object", "required": ["principalId", "deployment"], "additionalProperties": false,
-                "properties": {
-                  "principalId": {"type": "string", "pattern": "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"},
-                  "deployment": {"type": "string", "pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"}
-                }
-              }
-            },
             "roleBindings": {
               "type": "object",
               "additionalProperties": {
@@ -335,6 +324,13 @@
                   "reflectToApplication": {"type": "boolean"}
 
                 }
+              }
+            },
+            "workloadReaders": {
+              "type": "object",
+              "propertyNames": {"pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"},
+              "additionalProperties": {
+                "type": "string", "pattern": "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
               }
             },
             "roleAssignments": {
