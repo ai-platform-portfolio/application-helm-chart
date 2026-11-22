@@ -193,6 +193,8 @@ platform:
     blobRoleId: ""
     identities: {}
     roleAssignments: {}
+    aksArmId: ""
+    workloadReaders: {}
     storageContainers: {}
 
   namespaceLabels:

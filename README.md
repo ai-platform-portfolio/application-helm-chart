@@ -805,6 +805,27 @@ platform:
               remoteRef: {key: app-database-url}
 ```
 
+#### Read access for external Entra principals
+
+An existing agent or application can opt into Azure AKS RBAC Reader for the
+application namespace. Supply the cluster ARM ID from platform metadata and the
+consumer's current Entra object ID from its deployment record, such as Foundry's
+`instance_principal_id`. The chart derives the namespace scope and reconciles
+the grant through its existing ASO RoleAssignment template.
+
+```yaml
+platform:
+  azure:
+    aksArmId: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.ContainerService/managedClusters/aks-example
+    workloadReaders:
+      investigator: 00000000-0000-1111-2222-333333333333
+```
+
+AKS Azure RBAC and an authorized ASO credential are required. The Azure role
+permits reads of most Kubernetes objects within this namespace. It excludes
+Secrets, roles and role bindings. Removing the reader from an application
+managed with pruning removes its RoleAssignment through ASO.
+
 The platform caller owns trusted credential policy and name references; application
 pods receive only the selected Secret keys. No application names or provider
 settings are embedded in these templates. Reader service accounts default to no

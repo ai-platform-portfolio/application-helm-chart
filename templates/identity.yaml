@@ -73,9 +73,12 @@ spec:
 
 # RoleAssignment
 {{- range $name, $assignment := .Values.platform.azure.roleAssignments }}
-{{- $identity := required (printf "role assignment %s references undefined identity %s" $name $assignment.identity) (index $.Values.platform.azure.identities $assignment.identity) }}
+{{- $identity := dict }}
+{{- if not $assignment.principalId }}
+{{- $identity = required (printf "role assignment %s references undefined identity %s" $name $assignment.identity) (index $.Values.platform.azure.identities $assignment.identity) }}
 {{- if eq $identity.create false }}
 {{- fail (printf "identity %s uses an existing managed identity; assign its roles once in platform GitOps" $assignment.identity) }}
+{{- end }}
 {{- end }}
 {{- $scope := $assignment.armScope }}
 {{- if not $scope }}
@@ -101,7 +104,11 @@ metadata:
 spec:
   azureName: {{ printf "%s-%s-%s-%s-%s" (substr 0 8 $hash) (substr 8 12 $hash) (substr 12 16 $hash) (substr 16 20 $hash) (substr 20 32 $hash) | quote }}
   owner: {armId: {{ $scope | quote }}}
+  {{- if $assignment.principalId }}
+  principalId: {{ $assignment.principalId | lower | quote }}
+  {{- else }}
   principalIdFromConfig: {name: {{ include "application.resourceName" (dict "root" $ "name" $assignment.identity) }}-principal-id, key: principalId}
+  {{- end }}
   principalType: ServicePrincipal
   roleDefinitionReference:
     {{- if $assignment.roleDefinitionId }}
