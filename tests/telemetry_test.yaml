@@ -1,4 +1,4 @@
-suite: telemetry image query
+suite: scoped telemetry queries
 templates:
   - templates/telemetry-access.yaml
 set:
@@ -18,6 +18,12 @@ tests:
       - notMatchRegex:
           path: 'data["telemetry.json"]'
           pattern: '"image"'
+
+  - it: filters readiness Events by Pod name in the LogQL pipeline
+    asserts:
+      - matchRegex:
+          path: 'data["telemetry.json"]'
+          pattern: '"events":"query=%7Bsource%3D%22kubernetes-events%22%2Cnamespace%3D%22disposable-preview%22%2Creason%3D%22Unhealthy%22%7D\+%7C%3D\+%22Readiness\+probe\+failed%3A%22\+%7C\+name%3D~%22%5Eapi%28-%5Ba-z0-9%5D%2B-%5Ba-z0-9%5D%2B%29%3F%24%22\\u0026since=5m\\u0026limit=20"'
 
   - it: pins the image query to the exact namespace, Pod UID and container
     set:

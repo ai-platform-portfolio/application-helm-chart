@@ -9,7 +9,8 @@
 {{- $hostname := required "Telemetry requires a private hostname" .hostname }}
 {{- $root := printf "/query/%s" $.Values.name }}
 {{- $metrics := printf "{__name__=~\"kube_deployment_(spec_replicas|status_replicas_available|status_observed_generation)\",namespace=\"%s\",deployment=\"%s\"}" .namespace .workload }}
-{{- $events := printf "{source=\"kubernetes-events\",namespace=\"%s\",name=~\"%s(-[a-z0-9]+-[a-z0-9]+)?\",reason=\"Unhealthy\"} |= \"Readiness probe failed:\"" .namespace .workload }}
+{{- /* Loki stores Pod names as structured metadata. Filter them after stream selection. */ -}}
+{{- $events := printf "{source=\"kubernetes-events\",namespace=\"%s\",reason=\"Unhealthy\"} |= \"Readiness probe failed:\" | name=~\"^%s(-[a-z0-9]+-[a-z0-9]+)?$\"" .namespace .workload }}
 {{- $queries := dict "replicas" (printf "query=%s" (urlquery $metrics)) "events" (printf "query=%s&since=5m&limit=20" (urlquery $events)) }}
 {{- $paths := dict "replicas" "/prometheus/api/v1/query" "events" "/loki/api/v1/query_range" }}
 {{- $services := dict "replicas" "mimir-gateway" "events" "loki-gateway" }}
