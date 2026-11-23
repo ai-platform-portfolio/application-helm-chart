@@ -1132,3 +1132,9 @@ registering the credential Application and evaluates only after reconciliation.
 Deleting the Application revokes keys before deleting reader grants; it preserves
 stable accounting/control records. Replacing a native principal requires reviewed
 cleanup of its old access, rather than silently retaining another reader.
+
+Trusted delivery can opt into image evidence by supplying
+`platform.telemetry.pod: {name: ..., uid: ..., container: ...}` alongside the
+existing telemetry target. The chart adds one exact, read-only Mimir query
+for that Pod UID and container to both the rendered connection and Envoy
+policy. The same principal and namespace restrictions apply.

@@ -1,0 +1,41 @@
+suite: telemetry image query
+templates:
+  - templates/telemetry-access.yaml
+set:
+  name: hosted-reader
+  platform.modelGateway.connectionOnly: true
+  platform.telemetry:
+    hostname: telemetry.example.test
+    namespace: disposable-preview
+    workload: api
+    tenantId: 00000000-0000-4000-8000-000000000001
+    audience: 00000000-0000-4000-8000-000000000002
+    apiPrincipalId: 00000000-0000-4000-8000-000000000003
+    roleId: 00000000-0000-4000-8000-000000000004
+tests:
+  - it: preserves the ordinary two-query connection
+    asserts:
+      - notMatchRegex:
+          path: 'data["telemetry.json"]'
+          pattern: '"image"'
+
+  - it: pins the image query to the exact namespace, Pod UID and container
+    set:
+      platform.telemetry.pod:
+        name: api-abc-def
+        uid: 00000000-0000-4000-8000-000000000005
+        container: api
+    asserts:
+      - matchRegex:
+          path: 'data["telemetry.json"]'
+          pattern: '"image":"query=timestamp%28kube_pod_container_info%7Bnamespace%3D%22disposable-preview%22%2Cpod%3D%22api-abc-def%22%2Cuid%3D%2200000000-0000-4000-8000-000000000005%22%2Ccontainer%3D%22api%22%7D%29"'
+
+  - it: rejects an unpinned Pod query
+    set:
+      platform.telemetry.pod:
+        name: api-abc-def
+        uid: invalid
+        container: api
+    asserts:
+      - failedTemplate:
+          errorPattern: Telemetry requires an exact pod UID
