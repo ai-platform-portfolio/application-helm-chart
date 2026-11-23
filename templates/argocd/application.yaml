@@ -38,6 +38,9 @@ spec:
             modelGateway: {{ toJson $.Values.platform.modelGateway }}
             azure: {{ toJson $.Values.platform.azure }}
             {{- end }}
+            {{- with $.Values.platform.telemetry }}
+            telemetry: {{ toJson . }}
+            {{- end }}
             {{- if or .Values.events.sources .Values.events.sensors .Values.events.githubTokens }}
             events:
               {{- toYaml .Values.platform.events | nindent 14 }}
