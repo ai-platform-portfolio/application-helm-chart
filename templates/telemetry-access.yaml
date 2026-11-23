@@ -13,6 +13,23 @@
 {{- $queries := dict "replicas" (printf "query=%s" (urlquery $metrics)) "events" (printf "query=%s&since=5m&limit=20" (urlquery $events)) }}
 {{- $paths := dict "replicas" "/prometheus/api/v1/query" "events" "/loki/api/v1/query_range" }}
 {{- $services := dict "replicas" "mimir-gateway" "events" "loki-gateway" }}
+{{- with .pod }}
+{{- range $value := list .name .container }}
+{{- if or (gt (len $value) 63) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $value)) }}
+{{- fail "Telemetry pod and container must be DNS labels" }}
+{{- end }}
+{{- end }}
+{{- if not (regexMatch (printf "^%s-[a-z0-9]+-[a-z0-9]+$" $access.workload) .name) }}
+{{- fail "Telemetry pod must match the approved Deployment name" }}
+{{- end }}
+{{- if not (regexMatch "^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$" .uid) }}
+{{- fail "Telemetry requires an exact pod UID" }}
+{{- end }}
+{{- $image := printf "timestamp(kube_pod_container_info{namespace=\"%s\",pod=\"%s\",uid=\"%s\",container=\"%s\"})" $access.namespace .name .uid .container }}
+{{- $_ := set $queries "image" (printf "query=%s" (urlquery $image)) }}
+{{- $_ := set $paths "image" (index $paths "replicas") }}
+{{- $_ := set $services "image" (index $services "replicas") }}
+{{- end }}
 {{- $name := printf "telemetry-%s" (sha256sum $.Values.name | trunc 20) }}
 {{- range $id := list .tenantId .audience .apiPrincipalId .roleId }}
 {{- if not (regexMatch "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$" $id) }}
