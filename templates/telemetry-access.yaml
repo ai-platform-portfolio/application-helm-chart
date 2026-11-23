@@ -1,0 +1,103 @@
+{{- include "application.defaults" . -}}
+{{- with .Values.platform.telemetry }}
+{{- $access := . }}
+{{- range $value := list $.Values.name .namespace .workload }}
+{{- if or (gt (len $value) 63) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $value)) }}
+{{- fail "Telemetry consumer, target namespace and workload must be DNS labels" }}
+{{- end }}
+{{- end }}
+{{- $hostname := required "Telemetry requires a private hostname" .hostname }}
+{{- $root := printf "/query/%s" $.Values.name }}
+{{- $metrics := printf "{__name__=~\"kube_deployment_(spec_replicas|status_replicas_available|status_observed_generation)\",namespace=\"%s\",deployment=\"%s\"}" .namespace .workload }}
+{{- $events := printf "{source=\"kubernetes-events\",namespace=\"%s\",name=~\"%s(-[a-z0-9]+-[a-z0-9]+)?\",reason=\"Unhealthy\"} |= \"Readiness probe failed:\"" .namespace .workload }}
+{{- $queries := dict "replicas" (printf "query=%s" (urlquery $metrics)) "events" (printf "query=%s&since=5m&limit=20" (urlquery $events)) }}
+{{- $paths := dict "replicas" "/prometheus/api/v1/query" "events" "/loki/api/v1/query_range" }}
+{{- $services := dict "replicas" "mimir-gateway" "events" "loki-gateway" }}
+{{- $name := printf "telemetry-%s" (sha256sum $.Values.name | trunc 20) }}
+{{- range $id := list .tenantId .audience .apiPrincipalId .roleId }}
+{{- if not (regexMatch "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$" $id) }}
+{{- fail "Telemetry requires valid Entra tenant, audience, principal and role IDs" }}
+{{- end }}
+{{- end }}
+{{- if $.Values.platform.modelGateway.connectionOnly }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: opentelemetry
+data:
+  telemetry.json: {{ dict "endpoint" (printf "https://%s%s" $hostname $root) "scope" (printf "api://%s/.default" .audience) "queries" $queries | toJson | quote }}
+{{- else }}
+{{- $principal := required "Telemetry requires the deployed workload principal" $.Values.platform.modelGateway.principalId }}
+{{- if not (regexMatch "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$" $principal) }}
+{{- fail "Invalid telemetry principal" }}
+{{- end }}
+apiVersion: app.azuread.m.upbound.io/v1beta1
+kind: RoleAssignment
+metadata:
+  name: {{ $name }}
+  namespace: opentelemetry
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  providerConfigRef: {name: platform, kind: ClusterProviderConfig}
+  forProvider:
+    appRoleId: {{ .roleId | quote }}
+    principalObjectId: {{ $principal | quote }}
+    resourceObjectId: {{ .apiPrincipalId | quote }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ $name }}
+  namespace: opentelemetry
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  targetRefs:
+    - {group: gateway.networking.k8s.io, kind: HTTPRoute, name: {{ $name }}}
+  jwt:
+    providers:
+      - name: entra
+        issuer: {{ printf "https://login.microsoftonline.com/%s/v2.0" .tenantId | quote }}
+        audiences: [{{ .audience | quote }}]
+        remoteJWKS:
+          uri: {{ printf "https://login.microsoftonline.com/%s/discovery/v2.0/keys" .tenantId | quote }}
+  authorization:
+    defaultAction: Deny
+    rules:
+    {{- range $key, $query := $queries }}
+      - name: {{ $key }}
+        action: Allow
+        principal:
+          jwt:
+            provider: entra
+            claims:
+              - {name: oid, values: [{{ $principal | lower | quote }}]}
+              - {name: roles, valueType: StringArray, values: [Telemetry.Query]}
+        cel: {{ printf "request.method == %q && request.url_path == %q && request.query == %q" "GET" (printf "%s/%s" $root $key) $query | quote }}
+    {{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}
+  namespace: opentelemetry
+spec:
+  hostnames: [{{ $hostname | quote }}]
+  parentRefs:
+    - {group: gateway.networking.k8s.io, kind: ListenerSet, name: telemetry, sectionName: telemetry-https}
+  rules:
+    {{- range $key, $path := $paths }}
+    - matches:
+        - method: GET
+          path: {type: Exact, value: {{ printf "%s/%s" $root $key | quote }}}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplaceFullPath, replaceFullPath: {{ $path | quote }}}
+      backendRefs:
+        - {name: {{ index $services $key }}, namespace: lgtm, port: 80}
+    {{- end }}
+{{- end }}
+{{- end }}
