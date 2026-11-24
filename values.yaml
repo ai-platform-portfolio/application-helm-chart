@@ -43,6 +43,7 @@ platform:
     policies: {}
 
   telemetry: {} # Optional trusted delivery overlay for an existing private evidence listener.
+  hostedReadiness: {} # Set by Argo after a verified serving smoke.
 
   events:
     namespace: cluster-onboarding
