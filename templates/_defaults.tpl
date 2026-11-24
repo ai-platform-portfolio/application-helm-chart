@@ -11,6 +11,7 @@
 {{- $_ := set .Values.hosts "web" (dict "hostname" .Values.hostname) -}}
 {{- end -}}
 {{- include "application.dependencies" . -}}
+{{- include "application.hostedReadiness" . -}}
 {{- if .Values.databases -}}
 {{- if or .Values.postgres.databases .Values.postgres.roles .Values.postgres.migrations -}}
 {{- fail "Use databases intent or advanced postgres resource maps, not both" -}}

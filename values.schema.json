@@ -85,6 +85,17 @@
       "type": "object",
       "properties": {
         "modelGateway": {"type": "object"},
+        "hostedReadiness": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "agent": {"type": "string"},
+            "cluster": {"type": "string"},
+            "namespace": {"type": "string"},
+            "workload": {"type": "string"},
+            "repository": {"type": "string"}
+          },
+          "anyOf": [{"maxProperties": 0}, {"required": ["agent", "cluster", "namespace", "workload", "repository"]}]
+        },
         "tests": {
           "type": "object", "additionalProperties": false,
           "properties": {
